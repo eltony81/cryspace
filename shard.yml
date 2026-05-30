@@ -9,4 +9,4 @@ crystal: '>= 1.20.2'
 dependencies:
   num:
     github: eltony81/num.cr
-    version: ~> 1.3.9
+    version: ~> 1.4.0
