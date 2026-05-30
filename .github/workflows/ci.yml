@@ -21,10 +21,12 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y liblapack-dev libopenblas-dev
+        sudo apt-get install -y liblapack-dev libopenblas-dev libcblas-dev libatlas-base-dev
 
     - name: Install shards
       run: shards install
 
     - name: Run tests
-      run: crystal spec -Dopenblas
+      run: |
+        # Try linking with whatever is available
+        crystal spec
