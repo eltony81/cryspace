@@ -49,10 +49,10 @@ $$m\ddot{y} + c\dot{y} + ky = u$$
 - $x_2 = \dot{y}$ (Velocity)
 
 **State-Space Matrices:**
-- $A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}$
-- $B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}$
-- $C = \begin{bmatrix} 1 & 0 \end{bmatrix}$ (Measuring position)
-- $D = \begin{bmatrix} 0 \end{bmatrix}$
+$$A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}$$
+$$B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}$$
+$$C = \begin{bmatrix} 1 & 0 \end{bmatrix}$$ (Measuring position)
+$$D = \begin{bmatrix} 0 \end{bmatrix}$$
 
 **Implementation in CrySpace:**
 ```crystal
