@@ -42,17 +42,27 @@ A classic example of a state-space model is a **Mass-Spring-Damper system** (lik
 
 **The Physical Setup:**
 Newton's Second Law for a mass $m$, spring stiffness $k$, and damping coefficient $c$ with an external force $u$:
-$$m\ddot{y} + c\dot{y} + ky = u$$
+```math
+m\ddot{y} + c\dot{y} + ky = u
+```
 
 **State Definitions:**
 - $x_1 = y$ (Position)
 - $x_2 = \dot{y}$ (Velocity)
 
 **State-Space Matrices:**
-$$A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}$$
-$$B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}$$
-$$C = \begin{bmatrix} 1 & 0 \end{bmatrix}$$ (Measuring position)
-$$D = \begin{bmatrix} 0 \end{bmatrix}$$
+```math
+A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}
+```
+```math
+B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}
+```
+```math
+C = \begin{bmatrix} 1 & 0 \end{bmatrix} \text{ (Measuring position)}
+```
+```math
+D = \begin{bmatrix} 0 \end{bmatrix}
+```
 
 **Implementation in CrySpace:**
 ```crystal
