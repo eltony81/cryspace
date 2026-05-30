@@ -22,12 +22,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y liblapack-dev libopenblas-dev
-        
-        # Brute force fix for -lcblas not being found
-        sudo ln -sf /usr/lib/x86_64-linux-gnu/libopenblas.so /usr/lib/x86_64-linux-gnu/libcblas.so
 
     - name: Install shards
       run: shards install
 
     - name: Run tests
-      run: crystal spec
+      run: crystal spec -Dopenblas
