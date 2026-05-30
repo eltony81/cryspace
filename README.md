@@ -1,0 +1,104 @@
+# CrySpace
+
+**CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
+
+## Features
+
+- **State-Space Systems**: Create and manipulate LTI (Linear Time-Invariant) systems in state-space form ($\dot{x} = Ax + Bu, y = Cx + Du$).
+- **Transfer Functions**: Represent systems as ratios of polynomials.
+- **System Interconnections**:
+  - Parallel connection (`+`)
+  - Series connection (`*`)
+  - Feedback connection (`feedback`)
+- **Stability Analysis**: Calculate system poles.
+- **Discretization**: Convert continuous-time systems to discrete-time using Zero-Order Hold (ZOH).
+- **Time Response**:
+  - Step response simulation.
+  - General ODE solvers (**Euler** and **Runge-Kutta 4**).
+- **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
+
+## Installation
+
+1. Add the dependency to your `shard.yml`:
+
+   ```yaml
+   dependencies:
+     cryspace:
+       github: antonio-difluri/cryspace
+   ```
+
+2. Install system dependencies (LAPACK and BLAS/CBLAS):
+   ```bash
+   # On Ubuntu/Debian
+   sudo apt-get install liblapack-dev libcblas-dev
+   ```
+
+3. Run `shards install`
+
+## Usage
+
+### 1. Creating a State-Space System
+```crystal
+require "cryspace"
+
+# G(s) = 1 / (s + 1)
+a = [[-1.0]].to_tensor
+b = [[1.0]].to_tensor
+c = [[1.0]].to_tensor
+d = [[0.0]].to_tensor
+
+sys = CrySpace::StateSpace.new(a, b, c, d)
+puts "Poles: #{sys.poles}"
+```
+
+### 2. Feedback Connection
+```crystal
+# Closed loop with unity gain feedback
+k = [[1.0]].to_tensor
+sys_cl = sys.feedback(k)
+puts "Closed loop poles: #{sys_cl.poles}" # => [-2.0]
+```
+
+### 3. Step Response Simulation
+```crystal
+t, y = sys.step_response(n_steps: 50)
+y.each_with_index do |val, i|
+  puts "t: #{t[i]}s, y: #{val[0, 0].value}"
+end
+```
+
+### 4. General ODE Solving (RK4)
+You can solve arbitrary ODEs ($\dot{x} = f(x, t)$):
+```crystal
+f = ->(x : Float64Tensor, t : Float64) {
+  # Example: damped oscillator
+  # x = [position, velocity]
+  # dx/dt = [velocity, -k*pos - c*vel]
+  res = Float64Tensor.zeros([2, 1])
+  res[0, 0] = x[1, 0]
+  res[1, 0] = -1.0 * x[0, 0] - 0.5 * x[1, 0]
+  res
+}
+
+x0 = [[1.0], [0.0]].to_tensor # Initial position 1, velocity 0
+times, states = CrySpace::Solver.rk4(f, x0, {0.0, 10.0}, 0.1)
+```
+
+## Testing
+
+Run the specs to ensure everything is working correctly:
+```bash
+crystal spec
+```
+
+## Contributing
+
+1. Fork it (<https://github.com/antonio-difluri/cryspace/fork>)
+2. Create your feature branch (`git checkout -b my-new-feature`)
+3. Commit your changes (`git commit -am 'Add some feature'`)
+4. Push to the branch (`git push origin my-new-feature`)
+5. Create a new Pull Request
+
+## Contributors
+
+- [tony](https://github.com/antonio-difluri) - creator and maintainer
