@@ -143,19 +143,19 @@ module CrySpace
       x = Float64Tensor.zeros([sys.n_states, 1])
       u = Float64Tensor.ones([sys.n_inputs, 1])
       
-      t = [] of Float64
-      x_out = [] of Float64Tensor
-      y_out = [] of Float64Tensor
+      t_arr = Array(Float64).new(n_steps)
+      x_arr = Array(Float64Tensor).new(n_steps)
+      y_arr = Array(Float64Tensor).new(n_steps)
       
       n_steps.times do |i|
-        t << i * dt
-        x_out << x
+        t_arr << i * dt
+        x_arr << x
         y = sys.c.matmul(x) + sys.d.matmul(u)
-        y_out << y
+        y_arr << y
         x = sys.a.matmul(x) + sys.b.matmul(u)
       end
       
-      {t, x_out, y_out}
+      {t_arr, x_arr, y_arr}
     end
 
     def simulate(t_span : Tuple(Float64, Float64), dt : Float64, x0 : Float64Tensor? = nil, u : Float64Tensor? = nil, method = :rk4)
@@ -180,37 +180,56 @@ module CrySpace
       {res_t, res_x, res_y}
     end
 
-    # Vectorized simulation: returns {times, states, outputs} as tensors
-    # states: (n_steps x n_states)
-    # outputs: (n_steps x n_outputs)
+    # Vectorized simulation: optimized for StateSpace systems
     def simulate(t : Float64Tensor, x0 : Float64Tensor? = nil, u : Float64Tensor? = nil, method = :rk4)
-      # We use the existing simulate logic but pack results into single Tensors
-      t_start = t[0].value
-      t_end = t[-1].value
-      # Estimate dt from first two points
-      dt = t.size > 1 ? (t[1].value - t[0].value) : 1.0
-      
-      res_t, res_x, res_y = simulate({t_start, t_end}, dt, x0, u, method)
-      
-      # Convert Array(Tensor) to a single large Tensor
-      n_steps = res_t.size
+      n_steps = t.size
+      n_states = self.n_states
+      n_outputs = self.n_outputs
       
       x_matrix = Float64Tensor.new([n_steps, n_states])
       y_matrix = Float64Tensor.new([n_steps, n_outputs])
       
-      n_steps.times do |i|
-        # res_x[i] is (n_states x 1)
-        # We want to fill row i of x_matrix
-        n_states.times do |j|
-          x_matrix[i, j] = res_x[i][j, 0]
+      x_current = x0 || Float64Tensor.zeros([n_states, 1])
+      u_val = u || Float64Tensor.zeros([n_inputs, 1])
+      
+      # Fill first row
+      copy_to_matrix(x_matrix, 0, x_current)
+      y_initial = @c.matmul(x_current) + @d.matmul(u_val)
+      copy_to_matrix(y_matrix, 0, y_initial)
+      
+      (n_steps - 1).times do |i|
+        t_now = t[i].value
+        h = t[i + 1].value - t_now
+        
+        if method == :rk4
+          # Optimized RK4 for LTI system: dx/dt = Ax + Bu
+          k1 = @a.matmul(x_current) + @b.matmul(u_val)
+          k2 = @a.matmul(x_current + k1 * (h / 2.0)) + @b.matmul(u_val)
+          k3 = @a.matmul(x_current + k2 * (h / 2.0)) + @b.matmul(u_val)
+          k4 = @a.matmul(x_current + k3 * h) + @b.matmul(u_val)
+          
+          x_current = x_current + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
+        else
+          # Euler
+          k = @a.matmul(x_current) + @b.matmul(u_val)
+          x_current = x_current + k * h
         end
         
-        n_outputs.times do |j|
-          y_matrix[i, j] = res_y[i][j, 0]
-        end
+        copy_to_matrix(x_matrix, i + 1, x_current)
+        y = @c.matmul(x_current) + @d.matmul(u_val)
+        copy_to_matrix(y_matrix, i + 1, y)
       end
       
-      {Float64Tensor.from_array(res_t), x_matrix, y_matrix}
+      {t, x_matrix, y_matrix}
+    end
+
+    private def copy_to_matrix(matrix : Float64Tensor, row : Int, vector : Float64Tensor)
+      n = vector.size
+      m_ptr = matrix.to_unsafe + (row * n)
+      v_ptr = vector.to_unsafe
+      n.times do |j|
+        m_ptr[j] = v_ptr[j]
+      end
     end
 
     private def expm(m : Float64Tensor, order = 15)
