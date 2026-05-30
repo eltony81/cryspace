@@ -294,6 +294,161 @@ module CrySpace
       StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
     end
 
+    def impulse_response(n_steps = 100)
+      sys = self
+      curr_dt = @dt
+      unless curr_dt && curr_dt > 0
+        sys = self.sample(0.1)
+      end
+      
+      dt = sys.dt.not_nil!
+      # For impulse, we set initial state x = B/dt and u = 0 (for discrete approx)
+      # Or more accurately for discrete: x[0] = 0, u[0] = 1/dt, u[k>0] = 0
+      x = Float64Tensor.zeros([sys.n_states, 1])
+      
+      t_arr = Array(Float64).new(n_steps)
+      x_arr = Array(Float64Tensor).new(n_steps)
+      y_arr = Array(Float64Tensor).new(n_steps)
+      
+      n_steps.times do |i|
+        t_arr << i * dt
+        u = i == 0 ? (Float64Tensor.ones([sys.n_inputs, 1]) / dt) : Float64Tensor.zeros([sys.n_inputs, 1])
+        
+        x_arr << x
+        y = sys.c.matmul(x) + sys.d.matmul(u)
+        y_arr << y
+        x = sys.a.matmul(x) + sys.b.matmul(u)
+      end
+      
+      {t_arr, x_arr, y_arr}
+    end
+
+    def is_stable?
+      p = poles
+      n = p.size
+      stable = true
+      
+      n.times do |i|
+        val = p[i].value
+        if @dt.nil? || @dt == 0
+          # Continuous: Re(poles) < 0
+          stable = false if val >= 0
+        else
+          # Discrete: |poles| < 1
+          stable = false if val.abs >= 1.0
+        end
+      end
+      stable
+    end
+
+    def ctrb
+      # Controllability matrix: [B AB A^2B ... A^(n-1)B]
+      n = n_states
+      m = n_inputs
+      res = Float64Tensor.zeros([n, n * m])
+      
+      temp = @b.dup
+      n.times do |i|
+        res[0...n, (i * m)...((i + 1) * m)] = temp
+        temp = @a.matmul(temp)
+      end
+      res
+    end
+
+    def obsv
+      # Observability matrix: [C; CA; CA^2; ...; CA^(n-1)]
+      n = n_states
+      p = n_outputs
+      res = Float64Tensor.zeros([n * p, n])
+      
+      temp = @c.dup
+      n.times do |i|
+        res[(i * p)...((i + 1) * p), 0...n] = temp
+        temp = temp.matmul(@a)
+      end
+      res
+    end
+
+    def is_controllable?
+      # Rank of ctrb matrix should be n
+      # num.cr doesn't have rank, but we can check SVD singular values
+      _, s, _ = ctrb.svd
+      count_nonzero(s) == n_states
+    end
+
+    def is_observable?
+      _, s, _ = obsv.svd
+      count_nonzero(s) == n_states
+    end
+
+    private def count_nonzero(s : Float64Tensor, tol = 1e-9)
+      count = 0
+      s.size.times do |i|
+        count += 1 if s[i].value.abs > tol
+      end
+      count
+    end
+
+    def to_transferfunction
+      # SISO only for now
+      unless n_inputs == 1 && n_outputs == 1
+        raise "to_transferfunction only supported for SISO systems"
+      end
+
+      # G(s) = C * inv(sI - A) * B + D
+      # Leverrier algorithm or Eigenvalue method
+      # For now, let's use the property that poles are eigvals of A
+      # and gain is dcgain. This is not enough for full TF.
+      # A better way is to use the characteristic polynomial.
+      
+      # den = charpoly(A)
+      n = n_states
+      den = Array(Float64).new(n + 1, 0.0)
+      den[0] = 1.0
+      
+      # Leverrier-Faddeev algorithm
+      m = Float64Tensor.identity(n)
+      n.times do |k|
+        index = k + 1
+        am = @a.matmul(m)
+        trace = 0.0
+        n.times { |i| trace += am[i, i].value }
+        ak = -trace / index
+        den[index] = ak
+        m = am + Float64Tensor.identity(n) * ak
+      end
+      
+      # num = C * adj(sI - A) * B + D * det(sI - A)
+      # adj(sI - A) coefficients are the M matrices from Leverrier
+      # Re-run Leverrier to get all M_k
+      num = Array(Float64).new(n + 1, 0.0)
+      m = Float64Tensor.identity(n)
+      n.times do |k|
+        # Coeff of s^(n-1-k) in C * adj(sI - A) * B
+        cb = @c.matmul(m).matmul(@b)
+        num[k + 1] = cb[0, 0].value
+        
+        am = @a.matmul(m)
+        trace = 0.0
+        n.times { |i| trace += am[i, i].value }
+        ak = -trace / (k + 1)
+        m = am + Float64Tensor.identity(n) * ak
+      end
+      
+      # Add D * den
+      d_val = @d[0, 0].value
+      (n + 1).times do |i|
+        num[i] += d_val * den[i]
+      end
+      
+      # Remove leading zeros in num
+      while num.size > 1 && num[0].abs < 1e-12
+        num.shift
+      end
+
+      TransferFunction.new(num.to_tensor, den.to_tensor, @dt)
+    end
+
     def to_s(io)
       io << "StateSpace system:\n"
       io << "A = " << @a << "\n"
