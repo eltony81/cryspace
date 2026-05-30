@@ -37,8 +37,32 @@
 
 ## Usage
 
-### 1. Classic Example: Mass-Spring-Damper System
-A classic example of a state-space model is a **Mass-Spring-Damper system** (like a car suspension). It converts a second-order physical equation into a 2-state matrix system.
+### 1. Basic Example: First-Order System (Non-vectorized)
+A simple starting point using manual iteration for a first-order system ($\dot{x} = -x + u$).
+
+```crystal
+require "cryspace"
+
+# G(s) = 1 / (s + 1)
+a = [[-1.0]].to_tensor
+b = [[1.0]].to_tensor
+c = [[1.0]].to_tensor
+d = [[0.0]].to_tensor
+
+sys = CrySpace::StateSpace.new(a, b, c, d)
+
+# Non-vectorized step response (manual loop)
+t_arr, x_arr, y_arr = sys.step_response(n_steps: 10)
+
+t_arr.each_with_index do |time, i|
+  state = x_arr[i][0, 0].value
+  output = y_arr[i][0, 0].value
+  puts "t: #{time.round(1)}s, State: #{state.round(4)}, Output: #{output.round(4)}"
+end
+```
+
+### 2. Mechanical Example: Mass-Spring-Damper System
+A classic 2-state matrix system representing a physical oscillator.
 
 **The Physical Setup:**
 Newton's Second Law for a mass $m$, spring stiffness $k$, and damping coefficient $c$ with an external force $u$:
@@ -46,28 +70,8 @@ Newton's Second Law for a mass $m$, spring stiffness $k$, and damping coefficien
 m\ddot{y} + c\dot{y} + ky = u
 ```
 
-**State Definitions:**
-- $x_1 = y$ (Position)
-- $x_2 = \dot{y}$ (Velocity)
-
-**State-Space Matrices:**
-```math
-A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}
-```
-```math
-B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}
-```
-```math
-C = \begin{bmatrix} 1 & 0 \end{bmatrix} \text{ (Measuring position)}
-```
-```math
-D = \begin{bmatrix} 0 \end{bmatrix}
-```
-
-**Implementation in CrySpace:**
+**Implementation (Vectorized):**
 ```crystal
-require "cryspace"
-
 m, k, c = 1.0, 10.0, 0.5
 
 a = [[0.0, 1.0], [-k/m, -c/m]].to_tensor
@@ -75,67 +79,64 @@ b = [[0.0], [1/m]].to_tensor
 c = [[1.0, 0.0]].to_tensor
 d = [[0.0]].to_tensor
 
-sys = CrySpace::StateSpace.new(a, b, c, d)
+sys_msd = CrySpace::StateSpace.new(a, b, c, d)
 
-# Simulate and retrieve internal states and outputs
+# Vectorized simulation from 0 to 10s
 t = Float64Tensor.linear_space(0.0, 10.0, 101)
-times, states, outputs = sys.simulate(t)
+times, states, outputs = sys_msd.simulate(t)
 
-# Access position (state 1) and velocity (state 2)
+# Access trajectories
 pos = states[..., 0]
 vel = states[..., 1]
 y_out = outputs[..., 0]
 
-puts "Final position: #{pos[-1].value}"
+puts "Max position: #{pos.max.value}"
 ```
 
-### 2. Electrical Example: RLC Circuit
-An RLC circuit is a second-order system composed of a Resistor $R$, Inductor $L$, and Capacitor $C$.
+### 3. Electrical Example: RLC Circuit with PI Control
+A second-order RLC circuit controlled by a Proportional-Integral (PI) feedback loop.
 
-**The Physical Equations:**
-Using Kirchhoff's Voltage Law (KVL):
-```math
-L\frac{di_L}{dt} + Ri_L + v_C = u(t)
-```
-```math
-C\frac{dv_C}{dt} = i_L
-```
-
-**State Definitions:**
-- $x_1 = v_C$ (Capacitor Voltage)
-- $x_2 = i_L$ (Inductor Current)
-
-**State-Space Matrices:**
+**The Plant (RLC):**
 ```math
 A = \begin{bmatrix} 0 & 1/C \\ -1/L & -R/L \end{bmatrix}, \quad B = \begin{bmatrix} 0 \\ 1/L \end{bmatrix}
 ```
-```math
-C = \begin{bmatrix} 1 & 0 \end{bmatrix}, \quad D = \begin{bmatrix} 0 \end{bmatrix}
-```
 
-**Implementation in CrySpace (Vectorized):**
+**The Controller (PI):**
+$K(s) = K_p + \frac{K_i}{s} = \frac{K_p s + K_i}{s}$
+
+**Implementation (Vectorized & Discrete Time):**
 ```crystal
-R, L, C = 10.0, 1.0, 0.1
-
+# 1. Define RLC Plant
+R, L, C = 1.0, 0.5, 0.1
 a = [[0.0, 1/C], [-1/L, -R/L]].to_tensor
 b = [[0.0], [1/L]].to_tensor
-c = [[1.0, 0.0]].to_tensor
+c = [[1.0, 0.0]].to_tensor # Measure Capacitor Voltage
 d = [[0.0]].to_tensor
+rlc_plant = CrySpace::StateSpace.new(a, b, c, d)
 
-rlc_sys = CrySpace::StateSpace.new(a, b, c, d)
+# 2. Define PI Controller: Kp=2.0, Ki=5.0
+kp, ki = 2.0, 5.0
+pid_tf = CrySpace::TransferFunction.new([kp, ki].to_tensor, [1.0, 0.0].to_tensor)
+pi_controller = pid_tf.to_statespace
 
-# Vectorized simulation from 0 to 120s
-t = Float64Tensor.linear_space(0.0, 120.0, 1201)
-times, states, outputs = rlc_sys.simulate(t)
+# 3. Create Closed-Loop System (Negative Feedback)
+sys_cl = rlc_plant.feedback(pi_controller)
 
-# Extract Capacitor Voltage (State 1) and Inductor Current (State 2)
-v_c = states[..., 0]
-i_l = states[..., 1]
+# 4. Discretize and Simulate for 120 seconds
+dt = 0.1
+sys_cl_d = sys_cl.sample(dt)
+t_vec = Float64Tensor.linear_space(0.0, 120.0, 1201)
 
-puts "Voltage at 120s: #{v_c[-1].value} V"
+times, states, outputs = sys_cl_d.simulate(t_vec)
+
+# 5. Retrieve trajectories
+voltage = outputs[..., 0]
+error_integral = states[..., 2] # Internal state of the PI controller
+
+puts "Final Capacitor Voltage (Steady State): #{voltage[-1].value} V"
 ```
 
-### 3. Feedback Connection
+### 4. Feedback Connection (Simple Gain)
 ```crystal
 # Closed loop with unity gain feedback
 k_gain = [[1.0]].to_tensor
@@ -152,7 +153,7 @@ cl_out = outputs_cl[..., 0]
 puts "Closed loop final position: #{cl_pos[-1].value}"
 ```
 
-### 3. Step Response and State Analysis
+### 5. Step Response and State Analysis
 You can simulate the system's response to a step input and obtain the trajectory of all internal states ($x$) and outputs ($y$).
 
 #### Manual Iteration (Detailed)
@@ -189,7 +190,7 @@ system_outputs = outputs[..., 0]
 puts "Final position: #{positions[-1].value}"
 ```
 
-### 4. General ODE Solving (RK4)
+### 6. General ODE Solving (RK4)
 You can solve arbitrary ODEs of the form:
 ```math
 \dot{x} = f(x, t)
@@ -224,26 +225,20 @@ outputs = pos_trajectory * 2.0 + vel_trajectory * 0.1
 puts "Final Output: #{outputs[-1].value}"
 ```
 
-### 5. Advanced Analysis (Modern Control)
-CrySpace provides tools to analyze the structural properties of systems.
-
+#### Manual Iteration (Detailed)
 ```crystal
-# Define a system
-sys = CrySpace::StateSpace.new(a, b, c, d)
+# Using t_span and dt returns Arrays of Tensors for the equation dx/dt = f(x, t)
+times, states = CrySpace::Solver.rk4(f, x0, {0.0, 10.0}, 0.1)
 
-# Check stability
-puts "Is stable? #{sys.is_stable?}"
-
-# Controllability and Observability matrices
-ctrb_matrix = sys.ctrb
-obsv_matrix = sys.obsv
-
-# Rank checks
-puts "Is controllable? #{sys.is_controllable?}"
-puts "Is observable? #{sys.is_observable?}"
+times.each_with_index do |t, i|
+  pos = states[i][0, 0].value
+  vel = states[i][1, 0].value
+  y = 2 * pos + 0.1 * vel
+  puts "t: #{t.round(2)}, y: #{y.round(4)}"
+end
 ```
 
-### 6. Transfer Function Arithmetic
+### 7. Transfer Function Arithmetic
 You can combine Transfer Functions using standard operators.
 
 ```crystal
@@ -270,7 +265,7 @@ _, states_tf, outputs_tf = sys_tf.simulate(t_tf)
 puts "TF output at 5s: #{outputs_tf[-1, 0].value}"
 ```
 
-### 7. Bidirectional Conversions
+### 8. Bidirectional Conversions
 Easily switch between State-Space and Transfer Function representations.
 
 ```crystal
