@@ -98,51 +98,79 @@ y_out = outputs[..., 0]
 puts "Max position: #{pos.max.value}"
 ```
 
-### 3. Electrical Example: RLC Circuit with PI Control
-A second-order RLC circuit controlled by a Proportional-Integral (PI) feedback loop.
+### 3. Comprehensive Example: RLC Circuit with PID Control
+This step-by-step guide shows how to model a physical system, design a PID controller, and simulate the closed-loop performance.
 
-**The Plant (RLC):**
+#### Step 1: Define the Physical Plant (RLC)
+We model a second-order RLC circuit with Capacitor Voltage ($v_C$) and Inductor Current ($i_L$) as states.
 ```math
 A = \begin{bmatrix} 0 & 1/C \\ -1/L & -R/L \end{bmatrix}, \quad B = \begin{bmatrix} 0 \\ 1/L \end{bmatrix}
 ```
 
-**The Controller (PI):**
-$K(s) = K_p + \frac{K_i}{s} = \frac{K_p s + K_i}{s}$
-
-**Implementation (Vectorized & Discrete Time):**
 ```crystal
-# 1. Define RLC Plant
+require "cryspace"
+
+# Circuit parameters
 R, L, C = 1.0, 0.5, 0.1
+
 a = [[0.0, 1/C], [-1/L, -R/L]].to_tensor
 b = [[0.0], [1/L]].to_tensor
-c = [[1.0, 0.0]].to_tensor # Measure Capacitor Voltage
+c = [[1.0, 0.0]].to_tensor # We measure Capacitor Voltage
 d = [[0.0]].to_tensor
+
 rlc_plant = CrySpace::StateSpace.new(a, b, c, d)
+```
 
-# 2. Define PI Controller: Kp=2.0, Ki=5.0
-kp, ki = 2.0, 5.0
-pid_tf = CrySpace::TransferFunction.new([kp, ki].to_tensor, [1.0, 0.0].to_tensor)
-pi_controller = pid_tf.to_statespace
+#### Step 2: Design the PID Controller
+We use a filtered derivative term to ensure the controller is "proper" and can be converted to State-Space.
+```math
+K(s) = K_p + \frac{K_i}{s} + \frac{K_d s}{T_f s + 1}
+```
 
-# 3. Create Closed-Loop System (Negative Feedback)
-sys_cl = rlc_plant.feedback(pi_controller)
+```crystal
+kp, ki, kd = 10.0, 5.0, 1.0
+tf = 0.01 # Filter time constant
 
-# Analyze closed-loop properties
+# Construct PID Transfer Function
+num_pid = [(kp * tf + kd), (kp + ki * tf), ki].to_tensor
+den_pid = [tf, 1.0, 0.0].to_tensor
+pid_tf = CrySpace::TransferFunction.new(num_pid, den_pid)
+
+# Convert to State-Space for interconnection
+pid_controller = pid_tf.to_statespace
+```
+
+#### Step 3: Create the Closed-Loop System
+We connect the PID controller in negative feedback with the RLC plant.
+```crystal
+# Negative feedback loop
+sys_cl = rlc_plant.feedback(pid_controller)
+```
+
+#### Step 4: Analyze Stability and Structural Properties
+Verify if the designed control loop is stable and if all states are observable.
+```crystal
 puts "Is Closed-Loop Stable? #{sys_cl.is_stable?}"
 puts "Is Closed-Loop Observable? #{sys_cl.is_observable?}"
+puts "Closed-Loop Poles: #{sys_cl.poles}"
+```
 
-# 4. Discretize and Simulate for 120 seconds
-dt = 0.1
-sys_cl_d = sys_cl.sample(dt)
-t_vec = Float64Tensor.linear_space(0.0, 120.0, 1201)
+#### Step 5: Run Vectorized Simulation (0 - 120s)
+Simulate the full system transient and retrieve all state trajectories.
+```crystal
+# Define time range
+t = Float64Tensor.linear_space(0.0, 120.0, 1201)
 
-times, states, outputs = sys_cl_d.simulate(t_vec)
+# Vectorized simulation
+times, states, outputs = sys_cl.simulate(t)
 
-# 5. Retrieve trajectories
-voltage = outputs[..., 0]
-error_integral = states[..., 2] # Internal state of the PI controller
+# Retrieve trajectories
+# states[..., 0..1] -> RLC states
+# states[..., 2..3] -> PID internal states
+voltage = outputs[..., 0] 
+current = states[..., 1]
 
-puts "Final Capacitor Voltage (Steady State): #{voltage[-1].value} V"
+puts "Steady-state voltage: #{voltage[-1].value.round(4)} V"
 ```
 
 ### 4. Feedback Connection (Simple Gain)
@@ -162,40 +190,7 @@ cl_out = outputs_cl[..., 0]
 puts "Closed loop final position: #{cl_pos[-1].value}"
 ```
 
-### 5. Advanced Control: PID Controller
-A Proportional-Integral-Derivative (PID) controller is the most common feedback control design. In CrySpace, you can define a PID using a filtered derivative term for numerical stability.
-
-**PID Formula (Filtered):**
-```math
-K(s) = K_p + \frac{K_i}{s} + \frac{K_d s}{T_f s + 1}
-```
-
-**Implementation (Vectorized):**
-```crystal
-# 1. Define Controller Parameters
-kp, ki, kd = 10.0, 5.0, 1.0
-tf = 0.01 # Filter time constant
-
-# 2. Construct PID Transfer Function
-num_pid = [(kp * tf + kd), (kp + ki * tf), ki].to_tensor
-den_pid = [tf, 1.0, 0.0].to_tensor
-pid_controller = CrySpace::TransferFunction.new(num_pid, den_pid).to_statespace
-
-# 3. Connect to the RLC Plant (from previous example)
-sys_pid_cl = rlc_plant.feedback(pid_controller)
-
-# 4. Analyze and Simulate
-puts "Is PID system stable? #{sys_pid_cl.is_stable?}"
-
-t_vec = Float64Tensor.linear_space(0.0, 10.0, 101)
-times, states, outputs = sys_pid_cl.simulate(t_vec)
-
-# states[..., 0..1] are RLC states, states[..., 2..3] are PID internal states
-final_voltage = outputs[-1, 0].value
-puts "Closed-loop voltage at 10s: #{final_voltage} V"
-```
-
-### 6. Step Response and State Analysis
+### 5. Step Response and State Analysis
 You can simulate the system's response to a step input and obtain the trajectory of all internal states ($x$) and outputs ($y$).
 
 #### Manual Iteration (Detailed)
@@ -232,7 +227,7 @@ system_outputs = outputs[..., 0]
 puts "Final position: #{positions[-1].value}"
 ```
 
-### 7. General ODE Solving (RK4)
+### 6. General ODE Solving (RK4)
 You can solve arbitrary ODEs of the form:
 ```math
 \dot{x} = f(x, t)
@@ -280,7 +275,7 @@ times.each_with_index do |t, i|
 end
 ```
 
-### 8. Transfer Function Arithmetic
+### 7. Transfer Function Arithmetic
 You can combine Transfer Functions using standard operators.
 
 ```crystal
@@ -307,7 +302,7 @@ _, states_tf, outputs_tf = sys_tf.simulate(t_tf)
 puts "TF output at 5s: #{outputs_tf[-1, 0].value}"
 ```
 
-### 9. Bidirectional Conversions
+### 8. Bidirectional Conversions
 Easily switch between State-Space and Transfer Function representations.
 
 ```crystal
