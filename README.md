@@ -103,7 +103,7 @@ A = \begin{bmatrix} 0 & 1/C \\ -1/L & -R/L \end{bmatrix}, \quad B = \begin{bmatr
 C = \begin{bmatrix} 1 & 0 \end{bmatrix}, \quad D = \begin{bmatrix} 0 \end{bmatrix}
 ```
 
-**Implementation in CrySpace:**
+**Implementation in CrySpace (Vectorized):**
 ```crystal
 R, L, C = 10.0, 1.0, 0.1
 
@@ -114,10 +114,15 @@ d = [[0.0]].to_tensor
 
 rlc_sys = CrySpace::StateSpace.new(a, b, c, d)
 
-# Analyze stability and calculate step response
-puts "Is RLC stable? #{rlc_sys.is_stable?}"
-t, x, y = rlc_sys.step_response(n_steps: 100)
-puts "Final Capacitor Voltage: #{y.last[0, 0].value}"
+# Vectorized simulation from 0 to 120s
+t = Float64Tensor.linear_space(0.0, 120.0, 1201)
+times, states, outputs = rlc_sys.simulate(t)
+
+# Extract Capacitor Voltage (State 1) and Inductor Current (State 2)
+v_c = states[..., 0]
+i_l = states[..., 1]
+
+puts "Voltage at 120s: #{v_c[-1].value} V"
 ```
 
 ### 3. Feedback Connection
