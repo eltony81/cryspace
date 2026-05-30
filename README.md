@@ -125,7 +125,11 @@ puts "Final position: #{positions[-1].value}"
 ```
 
 ### 4. General ODE Solving (RK4)
-You can solve arbitrary ODEs ($\dot{x} = f(x, t)$) and calculate derived outputs.
+You can solve arbitrary ODEs of the form:
+```math
+\dot{x} = f(x, t)
+```
+and calculate derived outputs.
 
 #### Vectorized Approach (Convenient)
 Passing a time vector to the solver returns results as Tensors, allowing for easy slicing and matrix operations:
@@ -157,7 +161,7 @@ puts "Final Output: #{outputs[-1].value}"
 
 #### Manual Iteration (Detailed)
 ```crystal
-# Using t_span and dt returns Arrays of Tensors
+# Using t_span and dt returns Arrays of Tensors for the equation dx/dt = f(x, t)
 times, states = CrySpace::Solver.rk4(f, x0, {0.0, 10.0}, 0.1)
 
 times.each_with_index do |t, i|
