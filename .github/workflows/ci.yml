@@ -21,7 +21,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y liblapack-dev libcblas-dev
+        sudo apt-get install -y liblapack-dev libatlas-base-dev
 
     - name: Install shards
       run: shards install
