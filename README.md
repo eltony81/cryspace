@@ -125,7 +125,11 @@ puts "Final position: #{positions[-1].value}"
 ```
 
 ### 4. General ODE Solving (RK4)
-You can solve arbitrary ODEs ($\dot{x} = f(x, t)$) and calculate derived outputs:
+You can solve arbitrary ODEs ($\dot{x} = f(x, t)$) and calculate derived outputs.
+
+#### Vectorized Approach (Convenient)
+Passing a time vector to the solver returns results as Tensors, allowing for easy slicing and matrix operations:
+
 ```crystal
 f = ->(x : Float64Tensor, t : Float64) {
   # Example: damped oscillator (x1: pos, x2: vel)
@@ -135,10 +139,27 @@ f = ->(x : Float64Tensor, t : Float64) {
   res
 }
 
+t_vec = Float64Tensor.linear_space(0.0, 10.0, 101)
 x0 = [[1.0], [0.0]].to_tensor
+
+# Vectorized solver returns {times, states} as Tensors
+times, states = CrySpace::Solver.rk4(f, x0, t_vec)
+
+# Extract trajectories
+pos_trajectory = states[..., 0]
+vel_trajectory = states[..., 1]
+
+# Calculate an arbitrary output y = 2*pos + 0.1*vel using tensor math
+outputs = pos_trajectory * 2.0 + vel_trajectory * 0.1
+
+puts "Final Output: #{outputs[-1].value}"
+```
+
+#### Manual Iteration (Detailed)
+```crystal
+# Using t_span and dt returns Arrays of Tensors
 times, states = CrySpace::Solver.rk4(f, x0, {0.0, 10.0}, 0.1)
 
-# Calculate an arbitrary output y = 2*pos + 0.1*vel
 times.each_with_index do |t, i|
   pos = states[i][0, 0].value
   vel = states[i][1, 0].value
