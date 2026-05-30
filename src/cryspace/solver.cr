@@ -111,12 +111,12 @@ module CrySpace
       {t_vec, x_matrix}
     end
 
-    private def copy_to_matrix(matrix : Float64Tensor, row : Int, vector : Float64Tensor)
+    def copy_to_matrix(matrix : Float64Tensor, row : Int, vector : Float64Tensor)
       n = vector.size
-      m_ptr = matrix.to_unsafe + (row * n)
-      v_ptr = vector.to_unsafe
       n.times do |j|
-        m_ptr[j] = v_ptr[j]
+        # ALWAYS extract value explicitly from source tensor
+        val = vector.rank > 1 ? vector[j, 0].value : vector[j].value
+        matrix[row, j] = val
       end
     end
   end
