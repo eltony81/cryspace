@@ -76,7 +76,17 @@ c = [[1.0, 0.0]].to_tensor
 d = [[0.0]].to_tensor
 
 sys = CrySpace::StateSpace.new(a, b, c, d)
-puts "System Poles: #{sys.poles}"
+
+# Simulate and retrieve internal states and outputs
+t = Float64Tensor.linear_space(0.0, 10.0, 101)
+times, states, outputs = sys.simulate(t)
+
+# Access position (state 1) and velocity (state 2)
+pos = states[..., 0]
+vel = states[..., 1]
+y_out = outputs[..., 0]
+
+puts "Final position: #{pos[-1].value}"
 ```
 
 ### 2. Electrical Example: RLC Circuit
@@ -130,7 +140,16 @@ puts "Voltage at 120s: #{v_c[-1].value} V"
 # Closed loop with unity gain feedback
 k_gain = [[1.0]].to_tensor
 sys_cl = sys.feedback(k_gain)
-puts "Closed loop poles: #{sys_cl.poles}"
+
+# Simulate closed-loop response
+t_cl = Float64Tensor.linear_space(0.0, 10.0, 101)
+_, states_cl, outputs_cl = sys_cl.simulate(t_cl)
+
+# Retrieve values
+cl_pos = states_cl[..., 0]
+cl_out = outputs_cl[..., 0]
+
+puts "Closed loop final position: #{cl_pos[-1].value}"
 ```
 
 ### 3. Step Response and State Analysis
@@ -243,8 +262,12 @@ tf_mul = tf1 * tf2
 # Feedback: G1 / (1 + G1*G2)
 tf_cl = tf1.feedback(tf2)
 
-puts "Closed loop poles: #{tf_cl.poles}"
-puts "Closed loop zeros: #{tf_cl.zeros}"
+# To simulate, convert to State-Space
+sys_tf = tf_cl.to_statespace
+t_tf = Float64Tensor.linear_space(0.0, 5.0, 51)
+_, states_tf, outputs_tf = sys_tf.simulate(t_tf)
+
+puts "TF output at 5s: #{outputs_tf[-1, 0].value}"
 ```
 
 ### 7. Bidirectional Conversions
@@ -256,6 +279,10 @@ tf = sys.to_transferfunction
 
 # Transfer Function to State-Space (Controllable Canonical Form)
 ss = tf.to_statespace
+
+# The converted system can be simulated normally
+t_ss = Float64Tensor.linear_space(0.0, 1.0, 11)
+_, x_ss, y_ss = ss.simulate(t_ss)
 ```
 
 ## Testing
