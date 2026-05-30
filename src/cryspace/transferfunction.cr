@@ -36,9 +36,12 @@ module CrySpace
         companion[i + 1, i] = 1.0
       end
       n.times do |i|
+        # coefficients are in order [p0, p1, ..., pn]
+        # characteristic eq: s^n + a1 s^(n-1) + ... + an = 0
+        # companion matrix first row: [-a1, -a2, ..., -an]
         companion[0, i] = -p[i + 1].value
       end
-      companion.eigvals
+      companion.eigvals_c.to_a
     end
 
 def +(other : TransferFunction)

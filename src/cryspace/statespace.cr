@@ -47,7 +47,7 @@ module CrySpace
     end
 
     def poles : Array(Complex)
-      @a.eigvals
+      @a.eigvals_c.to_a
     end
 
     def dcgain
