@@ -37,26 +37,44 @@
 
 ## Usage
 
-### 1. Creating a State-Space System
+### 1. Classic Example: Mass-Spring-Damper System
+A classic example of a state-space model is a **Mass-Spring-Damper system** (like a car suspension). It converts a second-order physical equation into a 2-state matrix system.
+
+**The Physical Setup:**
+Newton's Second Law for a mass $m$, spring stiffness $k$, and damping coefficient $c$ with an external force $u$:
+$$m\ddot{y} + c\dot{y} + ky = u$$
+
+**State Definitions:**
+- $x_1 = y$ (Position)
+- $x_2 = \dot{y}$ (Velocity)
+
+**State-Space Matrices:**
+- $A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}$
+- $B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}$
+- $C = \begin{bmatrix} 1 & 0 \end{bmatrix}$ (Measuring position)
+- $D = \begin{bmatrix} 0 \end{bmatrix}$
+
+**Implementation in CrySpace:**
 ```crystal
 require "cryspace"
 
-# G(s) = 1 / (s + 1)
-a = [[-1.0]].to_tensor
-b = [[1.0]].to_tensor
-c = [[1.0]].to_tensor
+m, k, c = 1.0, 10.0, 0.5
+
+a = [[0.0, 1.0], [-k/m, -c/m]].to_tensor
+b = [[0.0], [1/m]].to_tensor
+c = [[1.0, 0.0]].to_tensor
 d = [[0.0]].to_tensor
 
 sys = CrySpace::StateSpace.new(a, b, c, d)
-puts "Poles: #{sys.poles}"
+puts "System Poles: #{sys.poles}"
 ```
 
 ### 2. Feedback Connection
 ```crystal
 # Closed loop with unity gain feedback
-k = [[1.0]].to_tensor
-sys_cl = sys.feedback(k)
-puts "Closed loop poles: #{sys_cl.poles}" # => [-2.0]
+k_gain = [[1.0]].to_tensor
+sys_cl = sys.feedback(k_gain)
+puts "Closed loop poles: #{sys_cl.poles}"
 ```
 
 ### 3. Step Response Simulation
@@ -93,7 +111,7 @@ crystal spec
 
 ## Contributing
 
-1. Fork it (<https://github.com/antonio-difluri/cryspace/fork>)
+1. Fork it (<https://github.com/eltony81/cryspace/fork>)
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Commit your changes (`git commit -am 'Add some feature'`)
 4. Push to the branch (`git push origin my-new-feature`)
@@ -101,4 +119,4 @@ crystal spec
 
 ## Contributors
 
-- [tony](https://github.com/antonio-difluri) - creator and maintainer
+- [eltony81](https://github.com/eltony81) - creator and maintainer
