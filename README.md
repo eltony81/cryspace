@@ -79,7 +79,48 @@ sys = CrySpace::StateSpace.new(a, b, c, d)
 puts "System Poles: #{sys.poles}"
 ```
 
-### 2. Feedback Connection
+### 2. Electrical Example: RLC Circuit
+An RLC circuit is a second-order system composed of a Resistor $R$, Inductor $L$, and Capacitor $C$.
+
+**The Physical Equations:**
+Using Kirchhoff's Voltage Law (KVL):
+```math
+L\frac{di_L}{dt} + Ri_L + v_C = u(t)
+```
+```math
+C\frac{dv_C}{dt} = i_L
+```
+
+**State Definitions:**
+- $x_1 = v_C$ (Capacitor Voltage)
+- $x_2 = i_L$ (Inductor Current)
+
+**State-Space Matrices:**
+```math
+A = \begin{bmatrix} 0 & 1/C \\ -1/L & -R/L \end{bmatrix}, \quad B = \begin{bmatrix} 0 \\ 1/L \end{bmatrix}
+```
+```math
+C = \begin{bmatrix} 1 & 0 \end{bmatrix}, \quad D = \begin{bmatrix} 0 \end{bmatrix}
+```
+
+**Implementation in CrySpace:**
+```crystal
+R, L, C = 10.0, 1.0, 0.1
+
+a = [[0.0, 1/C], [-1/L, -R/L]].to_tensor
+b = [[0.0], [1/L]].to_tensor
+c = [[1.0, 0.0]].to_tensor
+d = [[0.0]].to_tensor
+
+rlc_sys = CrySpace::StateSpace.new(a, b, c, d)
+
+# Analyze stability and calculate step response
+puts "Is RLC stable? #{rlc_sys.is_stable?}"
+t, x, y = rlc_sys.step_response(n_steps: 100)
+puts "Final Capacitor Voltage: #{y.last[0, 0].value}"
+```
+
+### 3. Feedback Connection
 ```crystal
 # Closed loop with unity gain feedback
 k_gain = [[1.0]].to_tensor
