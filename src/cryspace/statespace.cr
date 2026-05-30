@@ -180,6 +180,39 @@ module CrySpace
       {res_t, res_x, res_y}
     end
 
+    # Vectorized simulation: returns {times, states, outputs} as tensors
+    # states: (n_steps x n_states)
+    # outputs: (n_steps x n_outputs)
+    def simulate(t : Float64Tensor, x0 : Float64Tensor? = nil, u : Float64Tensor? = nil, method = :rk4)
+      # We use the existing simulate logic but pack results into single Tensors
+      t_start = t[0].value
+      t_end = t[-1].value
+      # Estimate dt from first two points
+      dt = t.size > 1 ? (t[1].value - t[0].value) : 1.0
+      
+      res_t, res_x, res_y = simulate({t_start, t_end}, dt, x0, u, method)
+      
+      # Convert Array(Tensor) to a single large Tensor
+      n_steps = res_t.size
+      
+      x_matrix = Float64Tensor.new([n_steps, n_states])
+      y_matrix = Float64Tensor.new([n_steps, n_outputs])
+      
+      n_steps.times do |i|
+        # res_x[i] is (n_states x 1)
+        # We want to fill row i of x_matrix
+        n_states.times do |j|
+          x_matrix[i, j] = res_x[i][j, 0]
+        end
+        
+        n_outputs.times do |j|
+          y_matrix[i, j] = res_y[i][j, 0]
+        end
+      end
+      
+      {Float64Tensor.from_array(res_t), x_matrix, y_matrix}
+    end
+
     private def expm(m : Float64Tensor, order = 15)
       n = m.shape[0]
       res = Float64Tensor.identity(n)

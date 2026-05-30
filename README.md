@@ -90,6 +90,7 @@ puts "Closed loop poles: #{sys_cl.poles}"
 ### 3. Step Response and State Analysis
 You can simulate the system's response to a step input and obtain the trajectory of all internal states ($x$) and outputs ($y$).
 
+#### Manual Iteration (Detailed)
 ```crystal
 # Simulation for 5 seconds (50 steps of 0.1s)
 t, x, y = sys.step_response(n_steps: 50)
@@ -97,18 +98,30 @@ t, x, y = sys.step_response(n_steps: 50)
 puts "Time (s) | Position (Output) | Velocity (State x2)"
 puts "-" * 55
 t.each_with_index do |time, i|
-  # Accessing internal states (x)
-  # x[i][0, 0] is state 1 (position)
-  # x[i][1, 0] is state 2 (velocity)
-  x1 = x[i][0, 0].value
   x2 = x[i][1, 0].value
-  
-  # Accessing system output (y)
-  # y[i][0, 0] is the output (measuring position)
   output = y[i][0, 0].value
-  
   puts "#{time.round(2).to_s.ljust(8)} | #{output.round(4).to_s.ljust(17)} | #{x2.round(4)}"
 end
+```
+
+#### Vectorized Approach (Convenient)
+If you prefer to work with full matrices/tensors (similar to NumPy/MATLAB) without manual loops, you can pass a time vector:
+
+```crystal
+# Create a time vector from 0 to 10s with 0.1s steps
+t = Float64Tensor.linear_space(0.0, 10.0, 101)
+
+# Simulate returns 2D Tensors:
+# states: [time_steps x n_states]
+# outputs: [time_steps x n_outputs]
+times, states, outputs = sys.simulate(t)
+
+# Now you have all position values in a single column
+positions = states[..., 0] 
+velocities = states[..., 1]
+system_outputs = outputs[..., 0]
+
+puts "Final position: #{positions[-1].value}"
 ```
 
 ### 4. General ODE Solving (RK4)
