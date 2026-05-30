@@ -162,7 +162,40 @@ cl_out = outputs_cl[..., 0]
 puts "Closed loop final position: #{cl_pos[-1].value}"
 ```
 
-### 5. Step Response and State Analysis
+### 5. Advanced Control: PID Controller
+A Proportional-Integral-Derivative (PID) controller is the most common feedback control design. In CrySpace, you can define a PID using a filtered derivative term for numerical stability.
+
+**PID Formula (Filtered):**
+```math
+K(s) = K_p + \frac{K_i}{s} + \frac{K_d s}{T_f s + 1}
+```
+
+**Implementation (Vectorized):**
+```crystal
+# 1. Define Controller Parameters
+kp, ki, kd = 10.0, 5.0, 1.0
+tf = 0.01 # Filter time constant
+
+# 2. Construct PID Transfer Function
+num_pid = [(kp * tf + kd), (kp + ki * tf), ki].to_tensor
+den_pid = [tf, 1.0, 0.0].to_tensor
+pid_controller = CrySpace::TransferFunction.new(num_pid, den_pid).to_statespace
+
+# 3. Connect to the RLC Plant (from previous example)
+sys_pid_cl = rlc_plant.feedback(pid_controller)
+
+# 4. Analyze and Simulate
+puts "Is PID system stable? #{sys_pid_cl.is_stable?}"
+
+t_vec = Float64Tensor.linear_space(0.0, 10.0, 101)
+times, states, outputs = sys_pid_cl.simulate(t_vec)
+
+# states[..., 0..1] are RLC states, states[..., 2..3] are PID internal states
+final_voltage = outputs[-1, 0].value
+puts "Closed-loop voltage at 10s: #{final_voltage} V"
+```
+
+### 6. Step Response and State Analysis
 You can simulate the system's response to a step input and obtain the trajectory of all internal states ($x$) and outputs ($y$).
 
 #### Manual Iteration (Detailed)
@@ -199,7 +232,7 @@ system_outputs = outputs[..., 0]
 puts "Final position: #{positions[-1].value}"
 ```
 
-### 6. General ODE Solving (RK4)
+### 7. General ODE Solving (RK4)
 You can solve arbitrary ODEs of the form:
 ```math
 \dot{x} = f(x, t)
@@ -247,7 +280,7 @@ times.each_with_index do |t, i|
 end
 ```
 
-### 7. Transfer Function Arithmetic
+### 8. Transfer Function Arithmetic
 You can combine Transfer Functions using standard operators.
 
 ```crystal
@@ -274,7 +307,7 @@ _, states_tf, outputs_tf = sys_tf.simulate(t_tf)
 puts "TF output at 5s: #{outputs_tf[-1, 0].value}"
 ```
 
-### 8. Bidirectional Conversions
+### 9. Bidirectional Conversions
 Easily switch between State-Space and Transfer Function representations.
 
 ```crystal
