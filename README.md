@@ -24,7 +24,7 @@
    ```yaml
    dependencies:
      cryspace:
-       github: antonio-difluri/cryspace
+       github: eltony81/cryspace
    ```
 
 2. Install system dependencies (LAPACK and BLAS/CBLAS):
