@@ -21,10 +21,12 @@ describe CrySpace::StateSpace do
 
     sys = CrySpace::StateSpace.new(a, b, c, d)
     poles = sys.poles
-    # poles should be [-1.0, -2.0]
-    # Note: num.cr might return a Tensor, we need to check how to compare
-    sys.poles.to_a.sort.should eq([-2.0, -1.0])
+    # Sort complex by real part, then imaginary
+    poles.sort_by! { |p| {p.real, p.imag} }
+    poles[0].real.should eq(-2.0)
+    poles[1].real.should eq(-1.0)
     end
+
 
     it "calculates dcgain" do
     a = [[-1.0]].to_tensor

@@ -14,7 +14,10 @@ describe CrySpace::TransferFunction do
     num = [1.0].to_tensor
     den = [1.0, 3.0, 2.0].to_tensor
     tf = CrySpace::TransferFunction.new(num, den)
-    tf.poles.to_a.sort.should eq([-2.0, -1.0])
+    poles = tf.poles
+    poles.sort_by! { |p| {p.real, p.imag} }
+    poles[0].real.should eq(-2.0)
+    poles[1].real.should eq(-1.0)
   end
 
   it "converts to statespace" do
@@ -34,7 +37,7 @@ describe CrySpace::TransferFunction do
     num = [1.0, 2.0].to_tensor
     den = [1.0, 3.0, 2.0].to_tensor
     tf = CrySpace::TransferFunction.new(num, den)
-    tf.zeros[0].value.should eq(-2.0)
+    tf.zeros[0].real.should eq(-2.0)
   end
 
   it "performs transferfunction arithmetic" do

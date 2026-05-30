@@ -46,7 +46,7 @@ module CrySpace
       @c.shape[0]
     end
 
-    def poles
+    def poles : Array(Complex)
       @a.eigvals
     end
 
@@ -260,10 +260,10 @@ module CrySpace
       stable = true
       
       n.times do |i|
-        val = p[i].value
+        val = p[i]
         if @dt.nil? || @dt == 0
           # Continuous: Re(poles) < 0
-          stable = false if val >= 0
+          stable = false if val.real >= 0
         else
           # Discrete: |poles| < 1
           stable = false if val.abs >= 1.0

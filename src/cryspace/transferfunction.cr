@@ -8,38 +8,38 @@ module CrySpace
 
     def initialize(@num : Float64Tensor, @den : Float64Tensor, @dt : Float64? = nil)
       # Normalize denominator
-      if @den[0] != 1.0
-        alpha = @den[0]
+      if @den[0].value != 1.0
+        alpha = @den[0].value
         @num = @num / alpha
         @den = @den / alpha
       end
     end
-def poles
-  roots(@den)
-end
+    def poles : Array(Complex)
+      roots(@den)
+    end
 
-def zeros
-  roots(@num)
-end
+    def zeros : Array(Complex)
+      roots(@num)
+    end
 
-private def roots(poly : Float64Tensor)
-  # Roots of polynomial using companion matrix eigenvalues
-  # Assumes poly[0] is the coefficient of highest power
-  n = poly.size - 1
-  return Float64Tensor.new([0]) if n <= 0
-
-  # Normalize
-  p = poly / poly[0].value
-
-  companion = Float64Tensor.zeros([n, n])
-  (n - 1).times do |i|
-    companion[i + 1, i] = 1.0
-  end
-  n.times do |i|
-    companion[0, i] = -p[i + 1].value
-  end
-  companion.eigvals
-end
+    private def roots(poly : Float64Tensor) : Array(Complex)
+      # Roots of polynomial using companion matrix eigenvalues
+      # Assumes poly[0] is the coefficient of highest power
+      n = poly.size - 1
+      return [Complex.new(0.0, 0.0)] if n <= 0
+      
+      # Normalize
+      p = poly / poly[0].value
+      
+      companion = Float64Tensor.zeros([n, n])
+      (n - 1).times do |i|
+        companion[i + 1, i] = 1.0
+      end
+      n.times do |i|
+        companion[0, i] = -p[i + 1].value
+      end
+      companion.eigvals
+    end
 
 def +(other : TransferFunction)
   # G1 + G2 = (N1*D2 + N2*D1) / (D1*D2)
