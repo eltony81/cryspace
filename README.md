@@ -94,33 +94,44 @@ You can simulate the system's response to a step input and obtain the trajectory
 # Simulation for 5 seconds (50 steps of 0.1s)
 t, x, y = sys.step_response(n_steps: 50)
 
-puts "Time (s) | Position (y) | Velocity (x2)"
-puts "-" * 40
+puts "Time (s) | Position (Output) | Velocity (State x2)"
+puts "-" * 55
 t.each_with_index do |time, i|
-  # Accessing states: x[i][0, 0] is position, x[i][1, 0] is velocity
-  pos = x[i][0, 0].value
-  vel = x[i][1, 0].value
+  # Accessing internal states (x)
+  # x[i][0, 0] is state 1 (position)
+  # x[i][1, 0] is state 2 (velocity)
+  x1 = x[i][0, 0].value
+  x2 = x[i][1, 0].value
+  
+  # Accessing system output (y)
+  # y[i][0, 0] is the output (measuring position)
   output = y[i][0, 0].value
   
-  puts "#{time.round(2).to_s.ljust(8)} | #{pos.round(4).to_s.ljust(12)} | #{vel.round(4)}"
+  puts "#{time.round(2).to_s.ljust(8)} | #{output.round(4).to_s.ljust(17)} | #{x2.round(4)}"
 end
 ```
 
 ### 4. General ODE Solving (RK4)
-You can solve arbitrary ODEs ($\dot{x} = f(x, t)$):
+You can solve arbitrary ODEs ($\dot{x} = f(x, t)$) and calculate derived outputs:
 ```crystal
 f = ->(x : Float64Tensor, t : Float64) {
-  # Example: damped oscillator
-  # x = [position, velocity]
-  # dx/dt = [velocity, -k*pos - c*vel]
+  # Example: damped oscillator (x1: pos, x2: vel)
   res = Float64Tensor.zeros([2, 1])
   res[0, 0] = x[1, 0]
-  res[1, 0] = -1.0 * x[0, 0] - 0.5 * x[1, 0]
+  res[1, 0] = -10.0 * x[0, 0] - 0.5 * x[1, 0]
   res
 }
 
-x0 = [[1.0], [0.0]].to_tensor # Initial position 1, velocity 0
+x0 = [[1.0], [0.0]].to_tensor
 times, states = CrySpace::Solver.rk4(f, x0, {0.0, 10.0}, 0.1)
+
+# Calculate an arbitrary output y = 2*pos + 0.1*vel
+times.each_with_index do |t, i|
+  pos = states[i][0, 0].value
+  vel = states[i][1, 0].value
+  y = 2 * pos + 0.1 * vel
+  puts "t: #{t.round(2)}, y: #{y.round(4)}"
+end
 ```
 
 ## Testing

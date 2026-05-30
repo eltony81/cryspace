@@ -41,8 +41,9 @@ describe CrySpace::Solver do
     sys = CrySpace::StateSpace.new(a, b, c, d)
 
     # Initial state 1.0, zero input
-    t, x = sys.simulate({0.0, 1.0}, 0.1, x0: [[1.0]].to_tensor)
+    t, x, y = sys.simulate({0.0, 1.0}, 0.1, x0: [[1.0]].to_tensor)
     
     x.last[0, 0].value.should be_close(Math.exp(-1.0), 1e-5)
+    y.last[0, 0].value.should be_close(Math.exp(-1.0), 1e-5)
   end
 end

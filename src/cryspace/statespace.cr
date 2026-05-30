@@ -166,11 +166,18 @@ module CrySpace
         @a.matmul(x) + @b.matmul(u_val)
       }
       
-      if method == :rk4
+      res_t, res_x = if method == :rk4
         Solver.rk4(f, x_init, t_span, dt)
       else
         Solver.euler(f, x_init, t_span, dt)
       end
+
+      # Calculate outputs for each state
+      res_y = res_x.map do |x_vec|
+        @c.matmul(x_vec) + @d.matmul(u_val)
+      end
+
+      {res_t, res_x, res_y}
     end
 
     private def expm(m : Float64Tensor, order = 15)
