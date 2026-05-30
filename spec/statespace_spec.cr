@@ -109,12 +109,16 @@ describe CrySpace::StateSpace do
     d = [[0.0]].to_tensor
     sys = CrySpace::StateSpace.new(a, b, c, d)
 
-    t, y = sys.step_response(10)
+    t, x, y = sys.step_response(10)
     t.size.should eq(10)
+    x.size.should eq(10)
     y.size.should eq(10)
     # After 9 steps of 0.1s (0.9s total), y = 1 - e^-0.9 = 0.593
     y.last[0, 0].value.should be_close(0.593, 0.01)
+    # Also check state
+    x.last[0, 0].value.should be_close(0.593, 0.01)
     end
+
     end
 
 

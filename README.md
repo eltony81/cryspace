@@ -87,11 +87,22 @@ sys_cl = sys.feedback(k_gain)
 puts "Closed loop poles: #{sys_cl.poles}"
 ```
 
-### 3. Step Response Simulation
+### 3. Step Response and State Analysis
+You can simulate the system's response to a step input and obtain the trajectory of all internal states ($x$) and outputs ($y$).
+
 ```crystal
-t, y = sys.step_response(n_steps: 50)
-y.each_with_index do |val, i|
-  puts "t: #{t[i]}s, y: #{val[0, 0].value}"
+# Simulation for 5 seconds (50 steps of 0.1s)
+t, x, y = sys.step_response(n_steps: 50)
+
+puts "Time (s) | Position (y) | Velocity (x2)"
+puts "-" * 40
+t.each_with_index do |time, i|
+  # Accessing states: x[i][0, 0] is position, x[i][1, 0] is velocity
+  pos = x[i][0, 0].value
+  vel = x[i][1, 0].value
+  output = y[i][0, 0].value
+  
+  puts "#{time.round(2).to_s.ljust(8)} | #{pos.round(4).to_s.ljust(12)} | #{vel.round(4)}"
 end
 ```
 

@@ -144,16 +144,18 @@ module CrySpace
       u = Float64Tensor.ones([sys.n_inputs, 1])
       
       t = [] of Float64
+      x_out = [] of Float64Tensor
       y_out = [] of Float64Tensor
       
       n_steps.times do |i|
         t << i * dt
+        x_out << x
         y = sys.c.matmul(x) + sys.d.matmul(u)
         y_out << y
         x = sys.a.matmul(x) + sys.b.matmul(u)
       end
       
-      {t, y_out}
+      {t, x_out, y_out}
     end
 
     def simulate(t_span : Tuple(Float64, Float64), dt : Float64, x0 : Float64Tensor? = nil, u : Float64Tensor? = nil, method = :rk4)
