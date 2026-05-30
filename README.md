@@ -159,17 +159,57 @@ outputs = pos_trajectory * 2.0 + vel_trajectory * 0.1
 puts "Final Output: #{outputs[-1].value}"
 ```
 
-#### Manual Iteration (Detailed)
-```crystal
-# Using t_span and dt returns Arrays of Tensors for the equation dx/dt = f(x, t)
-times, states = CrySpace::Solver.rk4(f, x0, {0.0, 10.0}, 0.1)
+### 5. Advanced Analysis (Modern Control)
+CrySpace provides tools to analyze the structural properties of systems.
 
-times.each_with_index do |t, i|
-  pos = states[i][0, 0].value
-  vel = states[i][1, 0].value
-  y = 2 * pos + 0.1 * vel
-  puts "t: #{t.round(2)}, y: #{y.round(4)}"
-end
+```crystal
+# Define a system
+sys = CrySpace::StateSpace.new(a, b, c, d)
+
+# Check stability
+puts "Is stable? #{sys.is_stable?}"
+
+# Controllability and Observability matrices
+ctrb_matrix = sys.ctrb
+obsv_matrix = sys.obsv
+
+# Rank checks
+puts "Is controllable? #{sys.is_controllable?}"
+puts "Is observable? #{sys.is_observable?}"
+```
+
+### 6. Transfer Function Arithmetic
+You can combine Transfer Functions using standard operators.
+
+```crystal
+# G1(s) = 1 / (s + 1)
+tf1 = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, 1.0].to_tensor)
+
+# G2(s) = 1 / (s + 2)
+tf2 = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, 2.0].to_tensor)
+
+# Parallel: G1 + G2
+tf_sum = tf1 + tf2
+
+# Series: G1 * G2
+tf_mul = tf1 * tf2
+
+# Feedback: G1 / (1 + G1*G2)
+tf_cl = tf1.feedback(tf2)
+
+puts "Closed loop poles: #{tf_cl.poles}"
+puts "Closed loop zeros: #{tf_cl.zeros}"
+```
+
+### 7. Bidirectional Conversions
+Easily switch between State-Space and Transfer Function representations.
+
+```crystal
+# State-Space to Transfer Function
+tf = sys.to_transferfunction
+
+# Transfer Function to State-Space (Controllable Canonical Form)
+ss = tf.to_statespace
 ```
 
 ## Testing
