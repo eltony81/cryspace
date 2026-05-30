@@ -81,6 +81,11 @@ d = [[0.0]].to_tensor
 
 sys_msd = CrySpace::StateSpace.new(a, b, c, d)
 
+# Analyze structural properties
+puts "Is Stable? #{sys_msd.is_stable?}"
+puts "Is Controllable? #{sys_msd.is_controllable?}"
+puts "Is Observable? #{sys_msd.is_observable?}"
+
 # Vectorized simulation from 0 to 10s
 t = Float64Tensor.linear_space(0.0, 10.0, 101)
 times, states, outputs = sys_msd.simulate(t)
@@ -121,6 +126,10 @@ pi_controller = pid_tf.to_statespace
 
 # 3. Create Closed-Loop System (Negative Feedback)
 sys_cl = rlc_plant.feedback(pi_controller)
+
+# Analyze closed-loop properties
+puts "Is Closed-Loop Stable? #{sys_cl.is_stable?}"
+puts "Is Closed-Loop Observable? #{sys_cl.is_observable?}"
 
 # 4. Discretize and Simulate for 120 seconds
 dt = 0.1
