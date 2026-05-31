@@ -317,26 +317,8 @@ t_ss = Float64Tensor.linear_space(0.0, 1.0, 11)
 _, x_ss, y_ss = ss.simulate(t_ss)
 ```
 
-## Visualization Application
-
-Included in this repository is a plotter application that simulates systems and automatically generates a plot using `gnuplot`.
-
-### Setup
-1. Ensure you have `gnuplot` installed:
-   ```bash
-   # On Ubuntu/Debian
-   sudo apt-get install gnuplot
-   # On Arch/Manjaro
-   sudo pacman -S gnuplot
+## Example running an application using the library
    ```
-
-2. Navigate to the plotter application directory:
-   ```bash
-   cd /path/to/plotter_app
-   ```
-
-### Running the Simulation
-To run the simulation and generate the `simulation_plot.png` image:
 ```bash
 crystal run src/plotter.cr -Dopenblas
 ```
