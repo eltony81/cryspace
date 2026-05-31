@@ -317,6 +317,30 @@ t_ss = Float64Tensor.linear_space(0.0, 1.0, 11)
 _, x_ss, y_ss = ss.simulate(t_ss)
 ```
 
+## Visualization Application
+
+Included in this repository is a plotter application that simulates systems and automatically generates a plot using Python's `matplotlib`.
+
+### Setup
+1. Ensure you have Python installed and create a virtual environment:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install pandas matplotlib
+   ```
+
+2. Navigate to the plotter application directory:
+   ```bash
+   cd /path/to/plotter_app
+   ```
+
+### Running the Simulation
+To run the simulation and generate the `simulation_plot.png` image:
+```bash
+source /path/to/venv/bin/activate
+crystal run src/plotter.cr -Dopenblas
+```
+
 ## Testing
 
 Run the specs to ensure everything is working correctly:
