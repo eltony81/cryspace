@@ -319,14 +319,15 @@ _, x_ss, y_ss = ss.simulate(t_ss)
 
 ## Visualization Application
 
-Included in this repository is a plotter application that simulates systems and automatically generates a plot using Python's `matplotlib`.
+Included in this repository is a plotter application that simulates systems and automatically generates a plot using `gnuplot`.
 
 ### Setup
-1. Ensure you have Python installed and create a virtual environment:
+1. Ensure you have `gnuplot` installed:
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install pandas matplotlib
+   # On Ubuntu/Debian
+   sudo apt-get install gnuplot
+   # On Arch/Manjaro
+   sudo pacman -S gnuplot
    ```
 
 2. Navigate to the plotter application directory:
@@ -337,7 +338,6 @@ Included in this repository is a plotter application that simulates systems and 
 ### Running the Simulation
 To run the simulation and generate the `simulation_plot.png` image:
 ```bash
-source /path/to/venv/bin/activate
 crystal run src/plotter.cr -Dopenblas
 ```
 
