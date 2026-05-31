@@ -3,30 +3,25 @@ name: CI
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-
     - name: Install Crystal
       uses: crystal-lang/install-crystal@v1
       with:
         crystal: latest
-
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y liblapack-dev libopenblas-dev libcblas-dev libatlas-base-dev
-
+        sudo apt-get install -y libopenblas-dev liblapack-dev
     - name: Install shards
       run: shards install
-
     - name: Run tests
-      run: |
-        # Try linking with whatever is available
-        crystal spec
+      run: crystal spec -Dopenblas
