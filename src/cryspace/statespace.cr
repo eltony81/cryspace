@@ -185,16 +185,26 @@ module CrySpace
       n_steps = t.size
       n_states_count = self.n_states
       n_outputs_count = self.n_outputs
+      n_inputs_count = self.n_inputs
       
       x_matrix = Float64Tensor.new([n_steps, n_states_count])
       y_matrix = Float64Tensor.new([n_steps, n_outputs_count])
       
       x_current = x0.nil? ? Float64Tensor.zeros([n_states_count, 1]) : x0.dup
-      u_val = u.nil? ? Float64Tensor.zeros([n_inputs, 1]) : u.dup
+      u_val = u.nil? ? Float64Tensor.zeros([n_inputs_count, 1]) : u.dup
+      u_current = Float64Tensor.zeros([n_inputs_count, 1])
       
       n_steps.times do |i|
+        if u_val.shape[1] > 1
+          n_inputs_count.times do |j|
+            u_current[j, 0] = u_val[j, i]
+          end
+        else
+          u_current = u_val
+        end
+
         # Step 1: Calculate output at current state
-        y = @c.matmul(x_current) + @d.matmul(u_val)
+        y = @c.matmul(x_current) + @d.matmul(u_current)
         
         # Step 2: Copy current state and output to result matrices
         n_states_count.times do |j|
@@ -211,13 +221,13 @@ module CrySpace
         if i < n_steps - 1
           h = t[i + 1].value - t[i].value
           if method == :rk4
-            k1 = @a.matmul(x_current) + @b.matmul(u_val)
-            k2 = @a.matmul(x_current + k1 * (h / 2.0)) + @b.matmul(u_val)
-            k3 = @a.matmul(x_current + k2 * (h / 2.0)) + @b.matmul(u_val)
-            k4 = @a.matmul(x_current + k3 * h) + @b.matmul(u_val)
+            k1 = @a.matmul(x_current) + @b.matmul(u_current)
+            k2 = @a.matmul(x_current + k1 * (h / 2.0)) + @b.matmul(u_current)
+            k3 = @a.matmul(x_current + k2 * (h / 2.0)) + @b.matmul(u_current)
+            k4 = @a.matmul(x_current + k3 * h) + @b.matmul(u_current)
             x_current = x_current + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
           else
-            k = @a.matmul(x_current) + @b.matmul(u_val)
+            k = @a.matmul(x_current) + @b.matmul(u_current)
             x_current = x_current + k * h
           end
         end
