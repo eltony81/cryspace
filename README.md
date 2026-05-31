@@ -359,3 +359,8 @@ crystal spec
 ## Contributors
 
 - [eltony81](https://github.com/eltony81) - creator and maintainer
+
+## Known Limitations
+
+- The automatic conversion from `TransferFunction` to `StateSpace` for complex PID controllers can be numerically unstable. The recommended approach is to define the
+     controller directly in its `StateSpace` representation.
