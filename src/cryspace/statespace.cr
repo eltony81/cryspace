@@ -117,7 +117,7 @@ module CrySpace
         raise "System is already discrete"
       end
       
-      ad = expm(@a * dt)
+      ad = (@a * dt).expm
       
       # Bd = dt * (I + A*dt/2! + A^2*dt^2/3! + ...) * B
       n = n_states
@@ -382,17 +382,6 @@ module CrySpace
       end
 
       TransferFunction.new(num.to_tensor, den.to_tensor, @dt)
-    end
-
-    private def expm(m : Float64Tensor, order = 15)
-      n = m.shape[0]
-      res = Float64Tensor.identity(n)
-      term = Float64Tensor.identity(n)
-      (1..order).each do |i|
-        term = term.matmul(m) / i.to_f
-        res = res + term
-      end
-      res
     end
 
     def +(other : StateSpace)
