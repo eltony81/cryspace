@@ -175,7 +175,52 @@ describe CrySpace::StateSpace do
     y.last[0, 0].value.should be_close(Math.exp(-0.9), 0.1)
     end
 
+    it "performs pole placement using acker" do
+      # Double integrator: A = [0 1; 0 0], B = [0; 1] (controllable)
+      a = [[0.0, 1.0], [0.0, 0.0]].to_tensor
+      b = [[0.0], [1.0]].to_tensor
+      c = [[1.0, 0.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      # Place poles at -2, -3
+      k = sys.acker([-2.0, -3.0])
+      
+      # For A - B*K, new characteristic eq should be s^2 + 5s + 6
+      # K = [6, 5]
+      k.to_unsafe[0].should be_close(6.0, 1e-5)
+      k.to_unsafe[1].should be_close(5.0, 1e-5)
     end
 
+    it "evaluates frequency response" do
+      # G(s) = 1 / (s + 1)
+      a = [[-1.0]].to_tensor
+      b = [[1.0]].to_tensor
+      c = [[1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      # Evaluate at omega = 1 rad/s
+      # G(j1) = 1 / (j + 1) = 0.5 - 0.5j
+      omega = [1.0].to_tensor
+      res = sys.freqresp(omega)
+      res.to_unsafe[0].real.should be_close(0.5, 1e-5)
+      res.to_unsafe[0].imag.should be_close(-0.5, 1e-5)
+    end
 
-
+    it "solves Continuous Algebraic Riccati Equation (care)" do
+      # Scalar system: A = 2, B = 1, Q = 3, R = 1
+      # CARE: 2*A*P - P*B*R^-1*B^T*P + Q = 0  =>  4P - P^2 + 3 = 0  =>  P^2 - 4P - 3 = 0
+      # Stable solution: P = 2 + sqrt(7) = 4.64575
+      a = [[2.0]].to_tensor
+      b = [[1.0]].to_tensor
+      c = [[1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      q = [[3.0]].to_tensor
+      r = [[1.0]].to_tensor
+      p = sys.care(q, r)
+      p.to_unsafe[0].should be_close(4.64575, 1e-5)
+    end
+end

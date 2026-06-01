@@ -34,7 +34,8 @@ systems.each do |s|
   puts "Poles: [#{poles_str}]"
   
   t = Float64Tensor.linear_space(0.0, 10.0, 101)
-  _, _, y = sys.simulate(t)
+  u = Float64Tensor.ones([sys.n_inputs, t.size])
+  _, _, y = sys.simulate(t, u: u)
   puts "Final Output (t=10s): #{sprintf("%.8f", y[-1, 0].value)}"
   puts "DC Gain: #{sprintf("%.8f", sys.dcgain[0,0].value)}"
 end

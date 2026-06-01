@@ -317,6 +317,45 @@ t_ss = Float64Tensor.linear_space(0.0, 1.0, 11)
 _, x_ss, y_ss = ss.simulate(t_ss)
 ```
 
+### 9. Advanced Control Design & Analysis
+
+#### A. Pole Placement (`acker`)
+Compute a state-feedback gain matrix $K$ to place the closed-loop system poles at specific locations.
+```crystal
+# Double integrator plant
+a = [[0.0, 1.0], [0.0, 0.0]].to_tensor
+b = [[0.0], [1.0]].to_tensor
+sys = CrySpace::StateSpace.new(a, b, [[1.0, 0.0]].to_tensor, [[0.0]].to_tensor)
+
+# Place closed-loop poles at -2.0 and -3.0
+k = sys.acker([-2.0, -3.0])
+puts "Feedback Gain K: #{k}" # => [[6.0, 5.0]]
+```
+
+#### B. Frequency Response (`freqresp`)
+Evaluate the system transfer matrix $G(j\omega)$ over a range of frequencies (useful for Bode/Nyquist analysis).
+```crystal
+# First-order system: G(s) = 1 / (s + 1)
+sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+
+# Evaluate at 1 rad/s and 10 rad/s
+omega = [1.0, 10.0].to_tensor
+response = sys.freqresp(omega)
+
+puts "Response at 1 rad/s: #{response[0, 0, 0]}"  # => (0.5 - 0.5j)
+puts "Response at 10 rad/s: #{response[0, 0, 1]}" # => (0.0099 - 0.099j)
+```
+
+#### C. LQR Design via Algebraic Riccati Equation (`care`)
+Solve the Continuous Algebraic Riccati Equation to design optimal control inputs.
+```crystal
+# Continuous Algebraic Riccati Equation: A^T*P + P*A - P*B*R^-1*B^T*P + Q = 0
+q = [[3.0]].to_tensor
+r = [[1.0]].to_tensor
+p = sys.care(q, r)
+puts "Solution P: #{p}" # => [[4.64575]]
+```
+
 
 ## Testing
 
