@@ -619,6 +619,100 @@ module CrySpace
       p_real
     end
 
+    # Solves continuous-time Linear Quadratic Regulator (LQR) controller: u = -Kx
+    # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
+    def lqr(q : Float64Tensor, r : Float64Tensor)
+      p = care(q, r)
+      k = r.inv.matmul(@b.transpose).matmul(p)
+      a_cl = @a - @b.matmul(k)
+      {k, p, a_cl.eigvals_c.to_a}
+    end
+
+    # Solves continuous-time Lyapunov equation: A*P + P*A^T + Q = 0
+    # Returns P.
+    def lyap(q : Float64Tensor)
+      n = n_states
+      eye = Float64Tensor.identity(n)
+      m_lhs = eye.kron(@a) + @a.kron(eye)
+      q_vec = q.reshape([n * n, 1])
+      p_vec = m_lhs.solve(-q_vec)
+      p_vec.reshape([n, n])
+    end
+
+    # Solves discrete-time Lyapunov equation: A*P*A^T - P + Q = 0
+    # Returns P.
+    def dlyap(q : Float64Tensor)
+      n = n_states
+      eye_nn = Float64Tensor.identity(n * n)
+      m_lhs = @a.kron(@a) - eye_nn
+      q_vec = q.reshape([n * n, 1])
+      p_vec = m_lhs.solve(-q_vec)
+      p_vec.reshape([n, n])
+    end
+
+    # Computes classical gain and phase margins (Bode margins) for a SISO system.
+    # Returns: {GM (amplitude gain margin), GM_dB (gain margin in dB), PM (phase margin in degrees), w_gc (gain crossover freq), w_pc (phase crossover freq)}
+    def stability_margins
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Stability margins only supported for SISO systems")
+      end
+
+      omega = Float64Tensor.linear_space(0.01, 1000.0, 10000)
+      h = freqresp(omega)
+      
+      w_gc = -1.0
+      w_pc = -1.0
+      
+      pm = 0.0
+      gm = Float64::INFINITY
+      
+      wrap_phase = ->(p : Float64) {
+        val = p % (2.0 * Math::PI)
+        val -= 2.0 * Math::PI if val > Math::PI
+        val += 2.0 * Math::PI if val < -Math::PI
+        val
+      }
+
+      n_points = omega.size
+      mags = Array(Float64).new(n_points)
+      phases = Array(Float64).new(n_points)
+      
+      n_points.times do |i|
+        val = h.to_unsafe[i]
+        mags << val.abs
+        phases << wrap_phase.call(Math.atan2(val.imag, val.real))
+      end
+      
+      (n_points - 1).times do |i|
+        if (mags[i] - 1.0) * (mags[i+1] - 1.0) <= 0.0
+          t = (1.0 - mags[i]) / (mags[i+1] - mags[i])
+          w = omega[i].value + t * (omega[i+1].value - omega[i].value)
+          w_gc = w
+          interpolated_phase = phases[i] + t * (phases[i+1] - phases[i])
+          pm = wrap_phase.call(interpolated_phase + Math::PI) * 180.0 / Math::PI
+          break
+        end
+      end
+      
+      (n_points - 1).times do |i|
+        p1 = phases[i]
+        p2 = phases[i+1]
+        
+        if p1 * p2 < 0.0 && p1.abs > 2.0 && p2.abs > 2.0
+          t = (-Math::PI - p1) / (p2 - p1) rescue 0.5
+          w = omega[i].value + t * (omega[i+1].value - omega[i].value)
+          w_pc = w
+          interpolated_mag = mags[i] + t * (mags[i+1] - mags[i])
+          gm = 1.0 / interpolated_mag if interpolated_mag > 0.0
+          break
+        end
+      end
+      
+      gm_db = gm == Float64::INFINITY ? Float64::INFINITY : 20.0 * Math.log10(gm)
+      
+      {gm, gm_db, pm, w_gc, w_pc}
+    end
+
     def to_s(io)
       io << "StateSpace system:\n"
       io << "A = " << @a << "\n"
