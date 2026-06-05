@@ -15,6 +15,12 @@
 - **Time Response**:
   - Step response simulation.
   - General ODE solvers (**Euler** and **Runge-Kutta 4**).
+- **Advanced Control Algorithms**:
+  - Linear Quadratic Regulator (`lqr`) design.
+  - Lyapunov solvers (`lyap` and `dlyap`) for continuous and discrete-time stability analysis.
+  - Bode stability margins (`stability_margins`) including Gain Margin and Phase Margin.
+- **State Estimation**:
+  - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
 
 ## Installation
@@ -346,14 +352,62 @@ puts "Response at 1 rad/s: #{response[0, 0, 0]}"  # => (0.5 - 0.5j)
 puts "Response at 10 rad/s: #{response[0, 0, 1]}" # => (0.0099 - 0.099j)
 ```
 
-#### C. LQR Design via Algebraic Riccati Equation (`care`)
-Solve the Continuous Algebraic Riccati Equation to design optimal control inputs.
+#### C. Riccati Equation Solver (`care`)
+Solve the Continuous Algebraic Riccati Equation.
 ```crystal
 # Continuous Algebraic Riccati Equation: A^T*P + P*A - P*B*R^-1*B^T*P + Q = 0
 q = [[3.0]].to_tensor
 r = [[1.0]].to_tensor
 p = sys.care(q, r)
 puts "Solution P: #{p}" # => [[4.64575]]
+```
+
+#### D. Linear Quadratic Regulator (`lqr`)
+Compute the optimal feedback gain matrix $K$ ($u = -Kx$), the cost matrix $P$, and closed-loop poles.
+```crystal
+# Define weighting matrices
+q = [[3.0]].to_tensor
+r = [[1.0]].to_tensor
+
+# Design optimal controller
+k, p, closed_loop_poles = sys.lqr(q, r)
+puts "Optimal gain matrix K: #{k}"
+```
+
+#### E. Lyapunov Equation Solvers (`lyap` and `dlyap`)
+Solve continuous-time ($A P + P A^T + Q = 0$) and discrete-time ($A P A^T - P + Q = 0$) Lyapunov equations.
+```crystal
+# Solve continuous Lyapunov equation
+q_cont = [[1.0]].to_tensor
+p_cont = sys.lyap(q_cont)
+
+# Solve discrete Lyapunov equation
+q_disc = [[1.0]].to_tensor
+p_disc = sys.dlyap(q_disc)
+```
+
+#### F. Stability Margins (`stability_margins`)
+Compute classical Gain Margin (absolute and in dB), Phase Margin (in degrees), and crossover frequencies.
+```crystal
+gm, gm_db, pm, w_gc, w_pc = sys.stability_margins
+puts "Phase Margin: #{pm.round(2)} deg at #{w_gc} rad/s"
+```
+
+#### G. Kalman Filtering (`KalmanFilter`)
+Implement a Discrete-Time Kalman Filter to track state estimates in the presence of process and measurement noise.
+```crystal
+# Discretize system first
+sys_discrete = sys.sample(0.5)
+
+q_noise = [[0.05]].to_tensor # process covariance
+r_noise = [[1.5]].to_tensor  # measurement covariance
+
+kf = CrySpace::KalmanFilter.new(sys_discrete, q_noise, r_noise)
+
+# In your recursive estimator loop:
+kf.predict(u: control_input)
+kf.update(y: noisy_measurement)
+puts "Estimated State: #{kf.x}"
 ```
 
 
