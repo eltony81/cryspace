@@ -410,6 +410,50 @@ kf.update(y: noisy_measurement)
 puts "Estimated State: #{kf.x}"
 ```
 
+#### H. Discrete DARE and DLQR (`dare` and `dlqr`)
+Solve Discrete-time Algebraic Riccati Equations and design discrete-time LQR controllers.
+```crystal
+# Solve DARE
+p = sys.dare(q, r)
+
+# Design DLQR (u = -Kx)
+k, p, closed_loop_poles = sys.dlqr(q, r)
+```
+
+#### I. Observer Pole Placement (`acker_obs`)
+Design full-state observers by placing the estimator poles using duality.
+```crystal
+# Place observer poles at -4.0 and -5.0
+l = sys.acker_obs([-4.0, -5.0])
+```
+
+#### J. System Gramians and Hankel Singular Values (`gram` and `hsvd`)
+Compute controllability or observability gramians and Hankel singular values for model reduction.
+```crystal
+# Controllability Gramian
+wc = sys.gram(:c)
+
+# Observability Gramian
+wo = sys.gram(:o)
+
+# Hankel Singular Values
+hsv = sys.hsvd
+```
+
+#### K. Linear Simulation with Arbitrary Inputs (`lsim`)
+Simulate time-domain response of LTI systems with time-varying input vectors.
+```crystal
+t = Float64Tensor.linear_space(0.0, 5.0, 51)
+u = Float64Tensor.ones([1, t.size])
+t_out, x_out, y_out = sys.lsim(u, t)
+```
+
+#### L. PID Tuning Rules (`ziegler_nichols_fopdt`)
+Compute optimal PID controller parameters ($K_p$, $K_i$, $K_d$) from first-order plus dead-time process parameters.
+```crystal
+kp, ki, kd = CrySpace::Tuning.ziegler_nichols_fopdt(k_process, tau_process, theta_process)
+```
+
 
 ## Testing
 

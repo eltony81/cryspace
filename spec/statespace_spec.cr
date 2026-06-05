@@ -263,4 +263,66 @@ describe CrySpace::StateSpace do
       w_gc.should be_close(1.8622, 0.1)
       w_pc.should eq(-1.0)
     end
+
+    it "solves Discrete Algebraic Riccati Equation (dare)" do
+      a = [[2.0]].to_tensor
+      b = [[1.0]].to_tensor
+      c = [[1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d, 1.0)
+      
+      p = sys.dare([[3.0]].to_tensor, [[1.0]].to_tensor)
+      p.to_unsafe[0].should be_close(6.4641, 1e-4)
+    end
+
+    it "solves discrete-time Linear Quadratic Regulator (dlqr)" do
+      a = [[2.0]].to_tensor
+      b = [[1.0]].to_tensor
+      c = [[1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d, 1.0)
+      
+      k, p, poles = sys.dlqr([[3.0]].to_tensor, [[1.0]].to_tensor)
+      p.to_unsafe[0].should be_close(6.4641, 1e-4)
+      k.to_unsafe[0].should be_close(1.73205, 1e-4)
+      poles[0].real.should be_close(0.26795, 1e-4)
+    end
+
+    it "performs observer pole placement using acker_obs" do
+      a = [[0.0, 1.0], [0.0, 0.0]].to_tensor
+      b = [[0.0], [1.0]].to_tensor
+      c = [[1.0, 0.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      l = sys.acker_obs([-4.0, -5.0])
+      l[0, 0].value.should be_close(9.0, 1e-5)
+      l[1, 0].value.should be_close(20.0, 1e-5)
+    end
+
+    it "calculates controllability and observability Gramians" do
+      sys = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[3.0]].to_tensor, [[0.0]].to_tensor)
+      
+      wc = sys.gram(:c)
+      wc.to_unsafe[0].should be_close(0.25, 1e-6)
+      
+      wo = sys.gram(:o)
+      wo.to_unsafe[0].should be_close(2.25, 1e-6)
+    end
+
+    it "calculates Hankel Singular Values (hsvd)" do
+      sys = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[3.0]].to_tensor, [[0.0]].to_tensor)
+      hsv = sys.hsvd
+      hsv[0].should be_close(0.75, 1e-6)
+    end
+
+    it "runs linear simulation using lsim" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      t = Float64Tensor.linear_space(0.0, 2.0, 201)
+      u = Float64Tensor.ones([1, t.size])
+      
+      t_out, x_out, y_out = sys.lsim(u, t)
+      t_out.size.should eq(201)
+      y_out[-1, 0].value.should be_close(1 - Math.exp(-2.0), 1e-4)
+    end
 end

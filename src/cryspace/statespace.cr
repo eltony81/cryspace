@@ -445,7 +445,7 @@ module CrySpace
       a_c = Tensor(Complex, CPU(Complex)).zeros([n, n])
       n.times do |i|
         n.times do |j|
-          a_c.to_unsafe[i * n + j] = Complex.new(@a.to_unsafe[i * n + j], 0.0)
+          a_c.to_unsafe[i * n + j] = Complex.new(@a[i, j].value, 0.0)
         end
       end
 
@@ -474,7 +474,7 @@ module CrySpace
       
       last_row = Float64Tensor.zeros([1, n])
       n.times do |col|
-        last_row.to_unsafe[col] = co_inv.to_unsafe[(n - 1) * n + col]
+        last_row.to_unsafe[col] = co_inv[n - 1, col].value
       end
       
       last_row.matmul(phi_real)
@@ -711,6 +711,97 @@ module CrySpace
       gm_db = gm == Float64::INFINITY ? Float64::INFINITY : 20.0 * Math.log10(gm)
       
       {gm, gm_db, pm, w_gc, w_pc}
+    end
+
+    # Solves the Discrete-Time Algebraic Riccati Equation (DARE) using iterative method:
+    # A^T * P * A - P - A^T * P * B * (R + B^T * P * B)^-1 * B^T * P * A + Q = 0
+    # Returns P.
+    def dare(q : Float64Tensor, r : Float64Tensor, max_iter = 1000, tol = 1e-9)
+      n = n_states
+      p = q.dup
+      
+      a_t = @a.transpose
+      b_t = @b.transpose
+      
+      max_iter.times do
+        # temp = R + B^T * P * B
+        temp = r + b_t.matmul(p).matmul(@b)
+        
+        # P_next = A^T * P * A - A^T * P * B * inv(R + B^T * P * B) * B^T * P * A + Q
+        term1 = a_t.matmul(p).matmul(@a)
+        term2 = a_t.matmul(p).matmul(@b).matmul(temp.inv).matmul(b_t).matmul(p).matmul(@a)
+        p_next = term1 - term2 + q
+        
+        # Check convergence
+        diff = 0.0
+        (n * n).times do |i|
+          d_val = (p_next.to_unsafe[i] - p.to_unsafe[i]).abs
+          diff = d_val if d_val > diff
+        end
+        
+        p = p_next
+        break if diff < tol
+      end
+      p
+    end
+
+    # Solves discrete-time Linear Quadratic Regulator (DLQR) controller: u = -Kx
+    # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
+    def dlqr(q : Float64Tensor, r : Float64Tensor)
+      p = dare(q, r)
+      b_t = @b.transpose
+      temp = r + b_t.matmul(p).matmul(@b)
+      k = temp.inv.matmul(b_t).matmul(p).matmul(@a)
+      a_cl = @a - @b.matmul(k)
+      {k, p, a_cl.eigvals_c.to_a}
+    end
+
+    # Computes estimator gain L for a full-state observer via duality:
+    # error dynamics error_k+1 = (A - L*C)*error_k
+    # Returns the observer gain L (n x 1).
+    def acker_obs(poles : Array(Float64) | Array(Complex))
+      # Duality: closed-loop observer dynamics (A - L*C) is dual to controller (A^T - C^T*L^T)
+      sys_dual = StateSpace.new(@a.transpose, @c.transpose, @b.transpose, @d.transpose)
+      k_dual = sys_dual.acker(poles)
+      k_dual.transpose
+    end
+
+    # Computes Controllability (:c) or Observability (:o) Gramian.
+    # Returns Gramian matrix P.
+    def gram(type : Symbol)
+      if type == :c
+        # Controllability Gramian: A*Wc + Wc*A^T + B*B^T = 0
+        q = @b.matmul(@b.transpose)
+        lyap(q)
+      elsif type == :o
+        # Observability Gramian: A^T*Wo + Wo*A + C^T*C = 0
+        q = @c.transpose.matmul(@c)
+        sys_t = StateSpace.new(@a.transpose, @b, @c, @d)
+        sys_t.lyap(q)
+      else
+        raise ArgumentError.new("Gramian type must be :c (controllability) or :o (observability)")
+      end
+    end
+
+    # Computes the Hankel Singular Values of the system.
+    # Returns a sorted array of Singular Values.
+    def hsvd
+      wc = gram(:c)
+      wo = gram(:o)
+      prod = wc.matmul(wo)
+      
+      # For a positive-semidefinite product, eigenvalues are real and non-negative
+      eigvals = prod.eigvals
+      res = Array(Float64).new(eigvals.size)
+      eigvals.size.times do |i|
+        res << Math.sqrt(eigvals.to_unsafe[i].abs)
+      end
+      res.sort.reverse
+    end
+
+    # Simulates time response with arbitrary input (wrapper for simulate).
+    def lsim(u : Float64Tensor, t : Float64Tensor, x0 : Float64Tensor? = nil, method = :rk4)
+      simulate(t, x0: x0, u: u, method: method)
     end
 
     def to_s(io)
