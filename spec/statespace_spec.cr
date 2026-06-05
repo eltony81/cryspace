@@ -223,4 +223,44 @@ describe CrySpace::StateSpace do
       p = sys.care(q, r)
       p.to_unsafe[0].should be_close(4.64575, 1e-5)
     end
+
+    it "solves continuous-time Linear Quadratic Regulator (lqr)" do
+      a = [[2.0]].to_tensor
+      b = [[1.0]].to_tensor
+      c = [[1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      q = [[3.0]].to_tensor
+      r = [[1.0]].to_tensor
+      k, p, poles = sys.lqr(q, r)
+      p.to_unsafe[0].should be_close(4.64575, 1e-5)
+      k.to_unsafe[0].should be_close(4.64575, 1e-5)
+      poles[0].real.should be_close(-2.64575, 1e-5)
+    end
+
+    it "solves continuous-time Lyapunov equation (lyap)" do
+      sys = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      p = sys.lyap([[1.0]].to_tensor)
+      p.to_unsafe[0].should be_close(0.25, 1e-9)
+    end
+
+    it "solves discrete-time Lyapunov equation (dlyap)" do
+      sys = CrySpace::StateSpace.new([[0.5]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      p = sys.dlyap([[1.0]].to_tensor)
+      p.to_unsafe[0].should be_close(1.33333, 1e-5)
+    end
+
+    it "calculates stability margins" do
+      num = [4.0].to_tensor
+      den = [1.0, 2.0, 2.0].to_tensor
+      sys = CrySpace::TransferFunction.new(num, den).to_statespace
+      
+      gm, gm_db, pm, w_gc, w_pc = sys.stability_margins
+      gm.should eq(Float64::INFINITY)
+      gm_db.should eq(Float64::INFINITY)
+      pm.should be_close(68.54, 0.5)
+      w_gc.should be_close(1.8622, 0.1)
+      w_pc.should eq(-1.0)
+    end
 end
