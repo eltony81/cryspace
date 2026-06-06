@@ -84,4 +84,43 @@ describe CrySpace::TransferFunction do
     but2.den[1].value.should be_close(Math.sqrt(2.0), 1e-5)
     but2.den[2].value.should be_close(1.0, 1e-9)
   end
+
+  it "computes TF sensitivity and complementary sensitivity" do
+    # G(s) = 1 / (s + 1)
+    g = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, 1.0].to_tensor)
+    k = CrySpace::TransferFunction.new([2.0].to_tensor, [1.0].to_tensor)
+    
+    # S = 1 / (1 + G*K) = (s + 1) / (s + 3)
+    s = g.sensitivity(k)
+    s.den[1].value.should be_close(3.0, 1e-9)
+    
+    # T = G*K / (1 + G*K) = 2 / (s + 3)
+    t = g.complementary_sensitivity(k)
+    t.num[0].value.should be_close(2.0, 1e-9)
+    t.den[1].value.should be_close(3.0, 1e-9)
+  end
+
+  it "performs filter frequency transformations" do
+    # 1st-order Butterworth lowpass with Wn = 1.0 rad/s: G(s) = 1 / (s + 1)
+    lp = CrySpace::TransferFunction.butter(1, 1.0)
+    
+    # Lowpass to Highpass with cutoff 3.0: G_hp(s) = s / (s + 3)
+    hp = lp.lowpass_to_highpass(3.0)
+    hp.num[0].value.should be_close(1.0, 1e-9)
+    hp.den[1].value.should be_close(3.0, 1e-9)
+    
+    # Lowpass to Bandpass with center 2.0 and BW 0.5
+    bp = lp.lowpass_to_bandpass(2.0, 0.5)
+    bp.poles.size.should eq(2)
+  end
+
+  it "performs TF discretization and continuous conversion" do
+    # G(s) = 1 / (s + 2)
+    g = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, 2.0].to_tensor)
+    g_d = g.to_discrete(0.1, :zoh)
+    g_d.dt.should eq(0.1)
+    
+    g_c = g_d.to_continuous
+    g_c.den[1].value.should be_close(2.0, 1e-3)
+  end
 end

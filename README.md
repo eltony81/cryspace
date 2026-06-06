@@ -781,6 +781,68 @@ Designs an analog lowpass Butterworth filter of a given order and cutoff frequen
 butter_filter = CrySpace::TransferFunction.butter(2, 10.0)
 ```
 
+#### TT. State-Space Identity & Static Gain Factories (`eye` & `static_gain`)
+Creates static gain and identity state-space systems with 0 states:
+```crystal
+# Creates a 2x2 identity gain system
+sys_eye = CrySpace::StateSpace.eye(2)
+
+# Creates a static gain system from a matrix
+sys_gain = CrySpace::StateSpace.static_gain(gain_matrix)
+```
+
+#### UU. Sensitivity & Complementary Sensitivity Functions (`sensitivity` & `complementary_sensitivity`)
+Calculates the Sensitivity function $S = (I + G K)^{-1}$ and Complementary Sensitivity function $T = G K (I + G K)^{-1}$ for a plant $G$ and controller $K$:
+```crystal
+# Compute S and T for StateSpace or TransferFunction systems
+s = g.sensitivity(k)
+t = g.complementary_sensitivity(k)
+```
+
+#### VV. Filter Frequency Transformations
+Transforms a normalized lowpass filter into a highpass or bandpass filter:
+```crystal
+# Lowpass to Highpass with cutoff 3.0 rad/s
+hp = lp.lowpass_to_highpass(3.0)
+
+# Lowpass to Bandpass with center 2.0 rad/s and bandwidth 0.5 rad/s
+bp = lp.lowpass_to_bandpass(center_frequency: 2.0, bandwidth: 0.5)
+```
+
+#### WW. Direct Transfer Function Discretization & Continuous Recovery (`to_discrete` & `to_continuous`)
+Discretizes a TransferFunction or recovers a continuous TransferFunction directly:
+```crystal
+# Convert continuous TransferFunction to discrete
+tf_d = tf.to_discrete(dt: 0.1, method: :zoh)
+
+# Convert discrete TransferFunction to continuous
+tf_c = tf_d.to_continuous
+```
+
+#### XX. Transmission Zeros (`transmission_zeros`)
+Computes the transmission zeros of a StateSpace system:
+```crystal
+# Calculate transmission zeros of the system
+zeros = sys.transmission_zeros
+```
+
+#### YY. Balanced Realization (`balreal`)
+Computes the balanced realization of a StateSpace system, returning the balanced system along with the similarity transformation matrices $T$ and $T^{-1}$:
+```crystal
+# Balanced realization
+sys_bal, t_matrix, t_inv = sys.balreal
+```
+
+#### ZZ. LQR Controller Synthesis with Cross-Coupling (`lqr` & `dlqr`)
+Designs continuous or discrete LQR feedback gains $K$ minimizing a quadratic cost function containing a cross-coupling term matrix $N_{cross}$:
+```crystal
+# continuous LQR with cross-coupling N
+k, p, poles = sys.lqr(q, r, n_cross)
+
+# discrete DLQR with cross-coupling N
+kd, pd, poles_d = sys_d.dlqr(q, r, n_cross)
+```
+
 ## Testing
 
 Run the specs to ensure everything is working correctly:

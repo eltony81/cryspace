@@ -496,5 +496,72 @@ module CrySpace
       end
       count
     end
+
+    # Computes the transmission zeros of the system.
+    def transmission_zeros : Array(Complex)
+      if n_inputs == 1 && n_outputs == 1
+        to_transferfunction.zeros
+      else
+        raise NotImplementedError.new("MIMO transmission zeros calculation not supported yet")
+      end
+    end
+
+    # Computes a balanced realization of the system.
+    # Returns: {balanced_system, t_matrix, t_inv}
+    def balreal : Tuple(StateSpace, Float64Tensor, Float64Tensor)
+      wc = gram(:c)
+      wo = gram(:o)
+      
+      uc, sc, vct = wc.svd
+      uo, so, vot = wo.svd
+      
+      n = n_states
+      lc = Float64Tensor.zeros([n, n])
+      lo = Float64Tensor.zeros([n, n])
+      
+      n.times do |i|
+        s_c_val = Math.sqrt(sc[i].value.abs)
+        s_o_val = Math.sqrt(so[i].value.abs)
+        
+        n.times do |j|
+          lc[j, i] = uc[j, i] * s_c_val
+          lo[j, i] = uo[j, i] * s_o_val
+        end
+      end
+      
+      product = lo.transpose.matmul(lc)
+      u_p, s_p, vt_p = product.svd
+      v_p = vt_p.transpose
+      
+      t_matrix = Float64Tensor.zeros([n, n])
+      t_inv = Float64Tensor.zeros([n, n])
+      
+      n.times do |i|
+        sig_val = s_p[i].value
+        sig_factor = sig_val.abs > 1e-12 ? 1.0 / Math.sqrt(sig_val) : 0.0
+        
+        n.times do |r|
+          sum = 0.0
+          n.times do |k|
+            sum += lc[r, k].value * v_p[k, i].value
+          end
+          t_matrix[r, i] = sum * sig_factor
+        end
+        
+        n.times do |c_idx|
+          sum = 0.0
+          n.times do |k|
+            sum += u_p[k, i].value * lo[c_idx, k].value
+          end
+          t_inv[i, c_idx] = sum * sig_factor
+        end
+      end
+      
+      ab = t_inv.matmul(@a).matmul(t_matrix)
+      bb = t_inv.matmul(@b)
+      cb = @c.matmul(t_matrix)
+      
+      {StateSpace.new(ab, bb, cb, @d, @dt), t_matrix, t_inv}
+    end
   end
 end

@@ -290,5 +290,104 @@ def to_statespace
       
       TransferFunction.new(num, den)
     end
+
+    # Computes the Sensitivity function S = 1 / (1 + G*K)
+    def sensitivity(k : TransferFunction) : TransferFunction
+      one = TransferFunction.new([1.0].to_tensor, [1.0].to_tensor, @dt)
+      one.feedback(self * k)
+    end
+
+    # Computes the Complementary Sensitivity function T = G*K / (1 + G*K)
+    def complementary_sensitivity(k : TransferFunction) : TransferFunction
+      one = TransferFunction.new([1.0].to_tensor, [1.0].to_tensor, @dt)
+      (self * k).feedback(one)
+    end
+
+    # Transforms a lowpass filter to a highpass filter with given cutoff frequency.
+    def lowpass_to_highpass(cutoff_frequency : Float64) : TransferFunction
+      n = @den.size - 1
+      num_padded = Array(Float64).new(n + 1, 0.0)
+      offset = n + 1 - @num.size
+      @num.size.times do |i|
+        num_padded[i + offset] = @num[i].value
+      end
+      
+      new_num = Array(Float64).new(n + 1, 0.0)
+      new_den = Array(Float64).new(n + 1, 0.0)
+      
+      (n + 1).times do |i|
+        new_num[n - i] = num_padded[i] * (cutoff_frequency ** (n - i))
+        new_den[n - i] = @den[i].value * (cutoff_frequency ** (n - i))
+      end
+      
+      TransferFunction.new(new_num.to_tensor, new_den.to_tensor, @dt)
+    end
+
+    private def complex_sqrt(z : Complex) : Complex
+      r = z.abs
+      theta = Math.atan2(z.imag, z.real)
+      sqrt_r = Math.sqrt(r)
+      Complex.new(sqrt_r * Math.cos(theta / 2.0), sqrt_r * Math.sin(theta / 2.0))
+    end
+
+    # Transforms a lowpass filter to a bandpass filter with given center frequency and bandwidth.
+    def lowpass_to_bandpass(center_frequency : Float64, bandwidth : Float64) : TransferFunction
+      p_list = poles
+      z_list = zeros
+      
+      w0_sq_4 = 4.0 * (center_frequency ** 2)
+      
+      new_poles = Array(Complex).new
+      p_list.each do |p|
+        val = (bandwidth * p)
+        sqrt_term = complex_sqrt(val * val - w0_sq_4)
+        new_poles << (val + sqrt_term) / 2.0
+        new_poles << (val - sqrt_term) / 2.0
+      end
+      
+      new_zeros = Array(Complex).new
+      z_list.each do |z|
+        val = (bandwidth * z)
+        sqrt_term = complex_sqrt(val * val - w0_sq_4)
+        new_zeros << (val + sqrt_term) / 2.0
+        new_zeros << (val - sqrt_term) / 2.0
+      end
+      
+      num_zeros_at_origin = p_list.size - z_list.size
+      num_zeros_at_origin.times do
+        new_zeros << Complex.new(0.0, 0.0)
+      end
+      
+      reconstruct = ->(roots : Array(Complex)) {
+        poly = [Complex.new(1.0, 0.0)]
+        roots.each do |r|
+          next_poly = Array(Complex).new(poly.size + 1, Complex.new(0.0, 0.0))
+          poly.size.times do |i|
+            next_poly[i] += poly[i]
+            next_poly[i + 1] += poly[i] * -r
+          end
+          poly = next_poly
+        end
+        poly.map(&.real).to_tensor
+      }
+      
+      num_new = reconstruct.call(new_zeros)
+      den_new = reconstruct.call(new_poles)
+      
+      gain_factor = bandwidth ** (p_list.size - z_list.size)
+      num_new = num_new * gain_factor
+      
+      TransferFunction.new(num_new, den_new, @dt)
+    end
+
+    # Discretizes a continuous TransferFunction directly.
+    def to_discrete(dt : Float64, method : Symbol = :zoh) : TransferFunction
+      to_statespace.sample(dt, method).to_transferfunction
+    end
+
+    # Converts a discrete TransferFunction back to continuous.
+    def to_continuous : TransferFunction
+      to_statespace.to_continuous.to_transferfunction
+    end
   end
 end

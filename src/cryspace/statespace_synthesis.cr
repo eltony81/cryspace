@@ -51,23 +51,68 @@ module CrySpace
     end
 
     # Solves continuous-time Linear Quadratic Regulator (LQR) controller: u = -Kx
+    # Optionally handles cross-coupling matrix N_cross: minimizes integral of (x^T*Q*x + u^T*R*u + 2*x^T*N_cross*u)
     # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
-    def lqr(q : Float64Tensor, r : Float64Tensor)
-      p = care(q, r)
-      k = r.inv.matmul(@b.transpose).matmul(p)
-      a_cl = @a - @b.matmul(k)
-      {k, p, a_cl.eigvals_c.to_a}
+    def lqr(q : Float64Tensor, r : Float64Tensor, n_cross : Float64Tensor? = nil)
+      if n_cross.nil?
+        p = care(q, r)
+        k = r.inv.matmul(@b.transpose).matmul(p)
+        a_cl = @a - @b.matmul(k)
+        {k, p, a_cl.eigvals_c.to_a}
+      else
+        r_inv = r.inv
+        a_hat = @a - @b.matmul(r_inv).matmul(n_cross.transpose)
+        q_hat = q - n_cross.matmul(r_inv).matmul(n_cross.transpose)
+        
+        orig_a = @a
+        @a = a_hat
+        p = care(q_hat, r)
+        @a = orig_a
+        
+        k = r_inv.matmul(@b.transpose.matmul(p) + n_cross.transpose)
+        a_cl = @a - @b.matmul(k)
+        {k, p, a_cl.eigvals_c.to_a}
+      end
     end
 
     # Solves discrete-time Linear Quadratic Regulator (DLQR) controller: u = -Kx
+    # Optionally handles cross-coupling matrix N_cross
     # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
-    def dlqr(q : Float64Tensor, r : Float64Tensor)
-      p = dare(q, r)
-      b_t = @b.transpose
-      temp = r + b_t.matmul(p).matmul(@b)
-      k = temp.inv.matmul(b_t).matmul(p).matmul(@a)
-      a_cl = @a - @b.matmul(k)
-      {k, p, a_cl.eigvals_c.to_a}
+    def dlqr(q : Float64Tensor, r : Float64Tensor, n_cross : Float64Tensor? = nil)
+      if n_cross.nil?
+        p = dare(q, r)
+        b_t = @b.transpose
+        temp = r + b_t.matmul(p).matmul(@b)
+        k = temp.inv.matmul(b_t).matmul(p).matmul(@a)
+        a_cl = @a - @b.matmul(k)
+        {k, p, a_cl.eigvals_c.to_a}
+      else
+        n = n_states
+        p = q.dup
+        a_t = @a.transpose
+        b_t = @b.transpose
+        n_t = n_cross.transpose
+        
+        1000.times do
+          temp = r + b_t.matmul(p).matmul(@b)
+          term1 = a_t.matmul(p).matmul(@a)
+          term2 = (a_t.matmul(p).matmul(@b) + n_cross).matmul(temp.inv).matmul(b_t.matmul(p).matmul(@a) + n_t)
+          p_next = term1 - term2 + q
+          
+          diff = 0.0
+          (n * n).times do |i|
+            d_val = (p_next.to_unsafe[i] - p.to_unsafe[i]).abs
+            diff = d_val if d_val > diff
+          end
+          p = p_next
+          break if diff < 1e-9
+        end
+        
+        temp = r + b_t.matmul(p).matmul(@b)
+        k = temp.inv.matmul(b_t.matmul(p).matmul(@a) + n_t)
+        a_cl = @a - @b.matmul(k)
+        {k, p, a_cl.eigvals_c.to_a}
+      end
     end
 
     def lqe(q_noise : Float64Tensor, r_noise : Float64Tensor) : Float64Tensor

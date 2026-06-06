@@ -68,6 +68,20 @@ module CrySpace
       end
     end
 
+    def self.static_gain(d_matrix : Float64Tensor, dt : Float64? = nil) : StateSpace
+      n = 0
+      m = d_matrix.shape[1]
+      p = d_matrix.shape[0]
+      a = Float64Tensor.zeros([0, 0])
+      b = Float64Tensor.zeros([0, m])
+      c = Float64Tensor.zeros([p, 0])
+      StateSpace.new(a, b, c, d_matrix, dt)
+    end
+
+    def self.eye(n : Int32, dt : Float64? = nil) : StateSpace
+      static_gain(Float64Tensor.identity(n), dt)
+    end
+
     def to_s(io)
       io << "StateSpace system:\n"
       io << "A = " << @a << "\n"

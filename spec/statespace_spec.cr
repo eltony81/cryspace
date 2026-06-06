@@ -697,4 +697,54 @@ describe CrySpace::StateSpace do
       sys_a.n_inputs.should eq(2)
       sys_a.n_outputs.should eq(2)
     end
-end
+
+    it "creates static gain and eye systems" do
+      sys_eye = CrySpace::StateSpace.eye(2)
+      sys_eye.n_states.should eq(0)
+      sys_eye.n_inputs.should eq(2)
+      sys_eye.n_outputs.should eq(2)
+      sys_eye.d[0, 0].value.should eq(1.0)
+    end
+
+    it "computes transmission zeros" do
+      # G(s) = (s + 4) / (s + 3) => zero = -4
+      sys = CrySpace::StateSpace.new([[-3.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor)
+      zeros = sys.transmission_zeros
+      zeros.size.should eq(1)
+      zeros[0].real.should be_close(-4.0, 1e-5)
+    end
+
+    it "computes balreal balanced realization" do
+      sys = CrySpace::StateSpace.new([[-1.0, 0.0], [0.0, -2.0]].to_tensor, [[1.0], [1.0]].to_tensor, [[1.0, 1.0]].to_tensor, [[0.0]].to_tensor)
+      sys_bal, t_mat, t_inv = sys.balreal
+      sys_bal.n_states.should eq(2)
+      # Controllability and observability gramians of the balanced system should be diagonal and equal
+      sys_bal.gram(:c)[0, 0].value.should be_close(sys_bal.gram(:o)[0, 0].value, 1e-4)
+    end
+
+    it "computes sensitivity and complementary sensitivity" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      k = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      
+      sens = sys.sensitivity(k)
+      sens.n_states.should eq(2)
+      
+      csens = sys.complementary_sensitivity(k)
+      csens.n_states.should eq(2)
+    end
+
+    it "solves LQR and DLQR with cross-coupling cost matrix" do
+      # dx/dt = -3*x + 2*u
+      sys = CrySpace::StateSpace.new([[-3.0]].to_tensor, [[2.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      q = [[1.0]].to_tensor
+      r = [[1.0]].to_tensor
+      n_cross = [[0.5]].to_tensor
+      
+      k, _, _ = sys.lqr(q, r, n_cross)
+      k[0, 0].value.should_not be_nil
+
+      sys_d = sys.sample(0.1)
+      kd, _, _ = sys_d.dlqr(q, r, n_cross)
+      kd[0, 0].value.should_not be_nil
+    end
+  end

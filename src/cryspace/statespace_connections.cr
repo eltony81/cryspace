@@ -3,6 +3,30 @@ require "num"
 module CrySpace
   class StateSpace
     def feedback(other : StateSpace, sign = -1)
+      if n_states == 0
+        n2 = other.n_states
+        eye_outputs = Float64Tensor.identity(other.n_inputs)
+        e = (eye_outputs + other.d.matmul(@d)).inv
+        
+        a_cl = other.a - other.b.matmul(e).matmul(@d).matmul(other.c)
+        b_cl = other.b.matmul(e).matmul(@d)
+        c_cl = -e.matmul(@d).matmul(other.c)
+        d_cl = e.matmul(@d)
+        return StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
+      end
+      
+      if other.n_states == 0
+        n1 = n_states
+        eye_outputs = Float64Tensor.identity(other.n_inputs)
+        e = (eye_outputs + other.d.matmul(@d)).inv
+        
+        a_cl = @a - @b.matmul(e).matmul(other.d).matmul(@c)
+        b_cl = @b.matmul(e)
+        c_cl = @c - @d.matmul(e).matmul(other.d).matmul(@c)
+        d_cl = @d.matmul(e)
+        return StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
+      end
+
       # Closed loop system with feedback
       n1 = n_states
       n2 = other.n_states
@@ -45,6 +69,16 @@ module CrySpace
       d_cl = inv_idk.matmul(@d)
       
       StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
+    end
+
+    # Computes the Sensitivity function S = (I + G*K)^-1
+    def sensitivity(k : StateSpace) : StateSpace
+      StateSpace.eye(n_outputs, @dt).feedback(self * k)
+    end
+
+    # Computes the Complementary Sensitivity function T = G*K * (I + G*K)^-1
+    def complementary_sensitivity(k : StateSpace) : StateSpace
+      (self * k).feedback(StateSpace.eye(n_outputs, @dt))
     end
 
     def +(other : StateSpace)
