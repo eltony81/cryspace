@@ -918,6 +918,104 @@ module CrySpace
       {k, p, a_cl.eigvals_c.to_a}
     end
 
+    # Synthesizes an optimal H2 state-feedback control gain K.
+    # Mimics state-feedback control loop for system: dx/dt = A*x + B*u + Bw*w, z = C_z*x + D_zu*u.
+    # We solve LQR where Q = C_z^T * C_z and R = D_zu^T * D_zu.
+    # Returns {K, P} where u = -K*x.
+    def h2syn(c_z : Float64Tensor, d_zu : Float64Tensor) : Tuple(Float64Tensor, Float64Tensor)
+      q = c_z.transpose.matmul(c_z)
+      r = d_zu.transpose.matmul(d_zu)
+      p = care(q, r)
+      k = r.inv.matmul(@b.transpose).matmul(p)
+      {k, p}
+    end
+
+    # Synthesizes a robust suboptimal H-infinity state-feedback control gain K for attenuation level gamma.
+    # Returns {K, P} if a solution exists, else raises an error.
+    def hinfsyn(c_z : Float64Tensor, d_zu : Float64Tensor, gamma : Float64) : Tuple(Float64Tensor, Float64Tensor)
+      n = n_states
+      q = c_z.transpose.matmul(c_z)
+      r = d_zu.transpose.matmul(d_zu)
+      
+      # For state feedback H-infinity design, we solve a modified Riccati equation:
+      # A^T * P + P * A + P * ( (1/gamma^2) * B_w * B_w^T - B * R^-1 * B^T ) * P + Q = 0
+      # Assumes a process noise input matrix B_w (here, we assume B_w = B for simplicity or identity).
+      # Let's define B_w as an identity matrix of size n.
+      b_w = Float64Tensor.identity(n)
+      
+      r_inv = r.inv
+      b_term = @b.matmul(r_inv).matmul(@b.transpose)
+      w_term = b_w.matmul(b_w.transpose) * (1.0 / (gamma * gamma))
+      
+      g = b_term - w_term
+      
+      # Build Hamiltonian Matrix
+      h = Float64Tensor.zeros([2 * n, 2 * n])
+      n.times do |i|
+        n.times do |j|
+          h.to_unsafe[i * (2 * n) + j] = @a.to_unsafe[i * n + j]
+          h.to_unsafe[i * (2 * n) + n + j] = -g.to_unsafe[i * n + j]
+          h.to_unsafe[(n + i) * (2 * n) + j] = -q.to_unsafe[i * n + j]
+          h.to_unsafe[(n + i) * (2 * n) + n + j] = -@a.to_unsafe[j * n + i]
+        end
+      end
+      
+      w_eig, v_eig = h.eig_c
+      
+      # Reconstruct complex eigenvectors
+      v_c = Tensor(Complex, CPU(Complex)).zeros([2 * n, 2 * n])
+      col = 0
+      while col < 2 * n
+        is_complex = w_eig.to_unsafe[col].imag.abs > 1e-12
+        if is_complex
+          (2 * n).times do |row|
+            real_val = v_eig.to_unsafe[col * (2 * n) + row]
+            imag_val = v_eig.to_unsafe[(col + 1) * (2 * n) + row]
+            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(real_val, imag_val)
+            v_c.to_unsafe[row * (2 * n) + col + 1] = Complex.new(real_val, -imag_val)
+          end
+          col += 2
+        else
+          (2 * n).times do |row|
+            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(v_eig.to_unsafe[col * (2 * n) + row], 0.0)
+          end
+          col += 1
+        end
+      end
+      
+      stable_indices = Array(Int32).new
+      w_eig.size.times do |i|
+        if w_eig.to_unsafe[i].real < 0.0
+          stable_indices << i
+        end
+      end
+      
+      if stable_indices.size != n
+        raise ArgumentError.new("Could not find stable subspace for H-infinity synthesis at gamma = #{gamma}")
+      end
+      
+      u1 = Tensor(Complex, CPU(Complex)).zeros([n, n])
+      u2 = Tensor(Complex, CPU(Complex)).zeros([n, n])
+      
+      n.times do |col_idx|
+        orig_col = stable_indices[col_idx]
+        n.times do |row_idx|
+          u1.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[row_idx * (2 * n) + orig_col]
+          u2.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[(n + row_idx) * (2 * n) + orig_col]
+        end
+      end
+      
+      p_complex = u2.matmul(u1.inv)
+      p_real = Float64Tensor.zeros([n, n])
+      (n * n).times do |i|
+        p_real.to_unsafe[i] = p_complex.to_unsafe[i].real
+      end
+      
+      # H-infinity gain: K = R^-1 * B^T * P
+      k = r_inv.matmul(@b.transpose).matmul(p_real)
+      {k, p_real}
+    end
+
     # Computes estimator gain L for a full-state observer via duality:
     # error dynamics error_k+1 = (A - L*C)*error_k
     # Returns the observer gain L (n x 1).
@@ -1474,6 +1572,63 @@ module CrySpace
       c_p_ct = @c.matmul(p).matmul(@c.transpose)
       inv_term = (c_p_ct + r_noise).inv
       @a.matmul(p).matmul(@c.transpose).matmul(inv_term)
+    end
+
+    # Alias for converting State-Space to TransferFunction representation (ss2tf)
+    def ss2tf : TransferFunction
+      to_transferfunction
+    end
+
+    # Computes the Peak Gain (H-infinity norm) of a SISO system.
+    # Returns the peak magnitude of G(j*w).
+    def peak_gain : Float64
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Peak gain is only supported for SISO systems")
+      end
+      # Evaluate frequency response over a wide log-space range to find maximum magnitude
+      omega = Float64Tensor.linear_space(-3.0, 5.0, 2000).map { |v| 10.0 ** v }
+      h = freqresp(omega)
+      
+      max_mag = 0.0
+      h.size.times do |i|
+        mag = h.to_unsafe[i].abs
+        max_mag = mag if mag > max_mag
+      end
+      max_mag
+    end
+
+    # Computes the multi-loop/disk margin (or classical loop margins using Nyquist analysis).
+    # Returns {gain_margin_range, phase_margin_range}.
+    # We solve Nyquist distance to the critical point -1+j0.
+    def loop_margins : Tuple(Tuple(Float64, Float64), Tuple(Float64, Float64))
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Loop margins are only supported for SISO systems")
+      end
+      
+      # Evaluate open-loop response
+      omega = Float64Tensor.linear_space(-2.0, 4.0, 1000).map { |v| 10.0 ** v }
+      h = freqresp(omega)
+
+      # Nyquist distance to -1+j0: s_m = min | 1 + G(j*w) |
+      min_dist = Float64::INFINITY
+      h.size.times do |i|
+        g_val = h.to_unsafe[i]
+        dist = (g_val + 1.0).abs
+        min_dist = dist if dist < min_dist
+      end
+
+      # Guard against unstable closed loops (min_dist near 0)
+      min_dist = 1e-4 if min_dist < 1e-4
+
+      # Lower and upper gain margins: GM_low = 1 / (1 + sm), GM_high = 1 / (1 - sm)
+      gm_low = 1.0 / (1.0 + min_dist)
+      gm_high = min_dist >= 1.0 ? Float64::INFINITY : 1.0 / (1.0 - min_dist)
+
+      # Phase margin: PM = +/- 2 * arcsin(sm / 2)
+      pm_rad = 2.0 * Math.asin({min_dist / 2.0, 1.0}.min)
+      pm_deg = pm_rad * 180.0 / Math::PI
+
+      { {gm_low, gm_high}, {-pm_deg, pm_deg} }
     end
 
     def to_s(io)

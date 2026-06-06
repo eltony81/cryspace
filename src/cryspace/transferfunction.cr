@@ -14,6 +14,41 @@ module CrySpace
         @den = @den / alpha
       end
     end
+
+    # Computes a Pade approximation of a time delay.
+    # Returns a TransferFunction approximation of e^(-delay * s).
+    def self.pade(delay : Float64, order : Int32 = 1) : TransferFunction
+      if delay <= 0.0
+        return TransferFunction.new([1.0].to_tensor, [1.0].to_tensor)
+      end
+
+      # Coefficients are calculated using standard recurrence formula:
+      # c_k = (order)! * (2*order - k)! / ( k! * (order - k)! * (2*order)! )
+      # num_k = (-delay)^k * c_k
+      # den_k = (delay)^k * c_k
+      
+      factorial = ->(n : Int32) {
+        val = 1.0
+        (1..n).each { |i| val *= i }
+        val
+      }
+
+      num_arr = Array(Float64).new(order + 1, 0.0)
+      den_arr = Array(Float64).new(order + 1, 0.0)
+
+      (order + 1).times do |k|
+        # Coeff index corresponding to s^(order - k)
+        # Power is (order - k)
+        power = order - k
+        c_val = (factorial.call(order) * factorial.call(2 * order - power)) /
+                (factorial.call(power) * factorial.call(order - power) * factorial.call(2 * order))
+        
+        num_arr[k] = ((-delay) ** power) * c_val
+        den_arr[k] = ((delay) ** power) * c_val
+      end
+
+      TransferFunction.new(num_arr.to_tensor, den_arr.to_tensor)
+    end
     def poles : Array(Complex)
       roots(@den)
     end

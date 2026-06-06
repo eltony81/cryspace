@@ -38,6 +38,11 @@
   - Canonical Transformations: Control Canonical Form (`to_control_canonical_form`) and Observable Canonical Form (`to_observable_canonical_form`).
   - TransferFunction feedback loop solver with configurable signs (`feedback`).
   - TransferFunction pole-zero cancellation (`minreal`) minimal realization.
+  - Pade approximation (`TransferFunction.pade`) for time delays.
+  - State-Space to TransferFunction conversion (`ss2tf`).
+  - Peak Gain (`peak_gain` / H-infinity norm) solver.
+  - Loop Margins (`loop_margins` / Nyquist distance bounds).
+  - Robust Optimal Control synthesis: $H_2$ (`h2syn`) and $H_\infty$ (`hinfsyn`) state-feedback.
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -665,6 +670,43 @@ g_cl = g1.feedback(g2, sign: 1)
 # Minimal realization: cancels poles and zeros that are within a specified tolerance
 g_minimal = g.minreal(tol: 1e-3)
 ```
+
+#### GG. Pade Delay Approximation (`TransferFunction.pade`)
+Approximates pure time delay (transport lag) as a rational transfer function of a specified order.
+```crystal
+# Approximates e^(-0.5 * s) as a 2nd-order TransferFunction
+tf_delay = CrySpace::TransferFunction.pade(delay: 0.5, order: 2)
+```
+
+#### HH. State-Space to TransferFunction Conversion (`ss2tf`)
+Converts a State-Space representation ($A, B, C, D$) to an equivalent Transfer Function polynomial ratio.
+```crystal
+tf_sys = sys.ss2tf
+```
+
+#### II. Peak Gain Solver (`peak_gain`)
+Computes the peak magnitude of the frequency response (i.e. the $H_\infty$ norm) for a SISO system.
+```crystal
+peak_val = sys.peak_gain
+```
+
+#### JJ. Robust Nyquist Loop Margins (`loop_margins`)
+Computes gain margins bounds and phase margin bounds using the Open-Loop Nyquist distance to the critical point $-1+j0$.
+```crystal
+# Returns { {gm_low, gm_high}, {pm_low, pm_high} }
+gm, pm = sys.loop_margins
+```
+
+#### KK. Optimal & Robust Control Synthesis (`h2syn` & `hinfsyn`)
+Designs optimal state-feedback control gains $K$ (where $u = -K x$) minimizing the $H_2$ or $H_\infty$ norm of the closed-loop system performance channel.
+```crystal
+# Optimal H2 synthesis (equivalent to LQR)
+k_h2, p_h2 = sys.h2syn(c_performance, d_performance)
+
+# Robust suboptimal H-infinity synthesis for attenuation level gamma
+k_hinf, p_hinf = sys.hinfsyn(c_performance, d_performance, gamma: 1.5)
+```
+
 
 
 

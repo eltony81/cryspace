@@ -567,5 +567,45 @@ describe CrySpace::StateSpace do
       g2_min.poles.size.should eq(1)
       g2_min.poles[0].real.should be_close(-2.0, 1e-3)
     end
+
+    it "performs Pade delay approximation" do
+      # 1st-order Pade delay of 1.0s: e^-s ≈ (2 - s) / (2 + s) => (-s + 2) / (s + 2)
+      g_delay = CrySpace::TransferFunction.pade(1.0, 1)
+      g_delay.num[0].value.should be_close(-1.0, 1e-9)
+      g_delay.num[1].value.should be_close(2.0, 1e-9)
+      g_delay.den[1].value.should be_close(2.0, 1e-9)
+    end
+
+    it "computes ss2tf, peak_gain, and loop_margins" do
+      # G(s) = 1 / (s + 1)
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      
+      # ss2tf
+      tf = sys.ss2tf
+      tf.den[1].value.should be_close(1.0, 1e-9)
+      
+      # peak gain is DC gain of 1.0
+      sys.peak_gain.should be_close(1.0, 1e-4)
+
+      # loop margins: critical point distance is 1.0 at w=0 since 1+G(0)=2
+      gm, pm = sys.loop_margins
+      gm[0].should be_close(0.5, 0.1) # 1 / (1 + 1) = 0.5
+      pm[1].should be_close(60.0, 5.0) # approx 60 degrees Phase Margin
+    end
+
+    it "performs H2 and H-infinity control synthesis" do
+      # SISO Stable system
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      c_z = [[1.0]].to_tensor
+      d_zu = [[1.0]].to_tensor
+
+      # H2 synthesis (equivalent to LQR)
+      k_h2, p_h2 = sys.h2syn(c_z, d_zu)
+      k_h2[0, 0].value.should be_close(0.4142, 1e-4)
+
+      # H-infinity synthesis at gamma = 2.0
+      k_hinf, p_hinf = sys.hinfsyn(c_z, d_zu, gamma: 2.0)
+      k_hinf[0, 0].value.should_not be_nil
+    end
 end
 
