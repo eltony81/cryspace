@@ -14,8 +14,15 @@ c = [[1.0, 0.0]].to_tensor
 d = [[0.0]].to_tensor
 rlc_plant = CrySpace::StateSpace.new(a, b, c, d)
 
-# 2. PID Controller (Forward Path) - Tuned to minimize overshoot under sensor lag
-kp, ki, kd = 0.8, 1.0, 0.4
+# 2. PID Controller (Forward Path) - Optimized to minimize settling time under sensor lag
+# These gains were determined using a multi-core grid search that minimized settling time
+# (the time after which the output enters and stays within a +/-5% band of the target value).
+# This prevents the output from dropping back down to ~0.6V and ensures rapid steady-state tracking.
+# Optimization method details:
+#   - Constraints: Plant and Sensor Overshoot <= 15%
+#   - Score function: score = SettlingTime + 0.01 * (Overshoot_Plant + Overshoot_Sensor)
+#   - Resulting gains: Kp = 1.0, Ki = 8.8, Kd = 0.5
+kp, ki, kd = 1.0, 8.8, 0.5
 tf = 0.01 # Derivative filter for realizability
 pid_num = [(kp*tf + kd), (kp + ki*tf), ki].to_tensor
 pid_den = [tf, 1.0, 0.0].to_tensor
