@@ -743,6 +743,44 @@ t_out, x_out, x_est_out, y_out, u_out = sys.simulate_observer(
 )
 ```
 
+#### OO. MIMO Singular Value Analysis (`sigma_data`)
+Computes the singular values of the frequency response matrix $G(j\omega)$ over a range of frequency points. Useful for MIMO robust stability analysis:
+```crystal
+# Compute singular values of MIMO frequency response
+w_points, sv_matrix = sys_mimo.sigma_data(omega)
+```
+
+#### PP. Package-Level Interconnections
+Module-level functions for constructing system connections:
+```crystal
+# Connect systems
+sys_s = CrySpace.series(sys1, sys2)
+sys_p = CrySpace.parallel(sys1, sys2)
+sys_f = CrySpace.feedback(sys1, sys2)
+sys_a = CrySpace.append(sys1, sys2)  # block-diagonal parallel concat
+```
+
+#### QQ. LQR Prefilter Scaling Gain (`nbar`)
+Calculates the feedforward scaling factor $N$ for LQR control ($u = -Kx + Nr$) to ensure zero steady-state tracking error:
+```crystal
+# Prefilter scaling gain N
+n_scale = sys.nbar(k_gain)
+```
+
+#### RR. Ramp Response Simulation (`ramp_response`)
+Simulates the system's output response to a ramp input ($u(t) = t$):
+```crystal
+# Run ramp simulation
+t, x, y = sys.ramp_response(n_steps: 100)
+```
+
+#### SS. Butterworth Analog Filter (`TransferFunction.butter`)
+Designs an analog lowpass Butterworth filter of a given order and cutoff frequency $\omega_n$:
+```crystal
+# 2nd-order Butterworth lowpass filter with Wn = 10 rad/s
+butter_filter = CrySpace::TransferFunction.butter(2, 10.0)
+```
+
 ## Testing
 
 Run the specs to ensure everything is working correctly:

@@ -651,4 +651,50 @@ describe CrySpace::StateSpace do
       t_out2.size.should eq(100)
       x_out2.shape[0].should eq(100)
     end
+
+    it "computes sigma_data singular values" do
+      # SISO System: G(s) = 2 / (s + 3)
+      sys = CrySpace::StateSpace.new([[-3.0]].to_tensor, [[2.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      omega = [0.0].to_tensor # DC frequency
+      w, sv = sys.sigma_data(omega)
+      # At w=0, G(0) = 2/3 ≈ 0.6667
+      sv[0, 0].value.should be_close(2.0 / 3.0, 1e-4)
+    end
+
+    it "computes nbar prefilter tracking scaling gain" do
+      # SISO System: G(s) = 2 / (s + 3)
+      sys = CrySpace::StateSpace.new([[-3.0]].to_tensor, [[2.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      k_gain = [[1.0]].to_tensor # u = -Kx
+      # A_cl = A - BK = -3 - 2*1 = -5
+      # N = inv(-C * inv(A_cl) * B) = inv(-1 * inv(-5) * 2) = inv(2/5) = 2.5
+      n_scale = sys.nbar(k_gain)
+      n_scale[0, 0].value.should be_close(2.5, 1e-4)
+    end
+
+    it "simulates ramp_response" do
+      # G(s) = 1/s => integrators step input yields ramp output, ramp input yields quadratic output
+      sys = CrySpace::StateSpace.new([[0.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      t, x, y = sys.ramp_response(n_steps: 10)
+      t[1].should be_close(0.1, 1e-9)
+      y[0][0, 0].value.should eq(0.0)
+    end
+
+    it "performs CrySpace module level connection algebra" do
+      sys1 = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      sys2 = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      
+      sys_s = CrySpace.series(sys1, sys2)
+      sys_s.n_states.should eq(2)
+      
+      sys_p = CrySpace.parallel(sys1, sys2)
+      sys_p.n_states.should eq(2)
+      
+      sys_f = CrySpace.feedback(sys1, sys2)
+      sys_f.n_states.should eq(2)
+
+      sys_a = CrySpace.append(sys1, sys2)
+      sys_a.n_states.should eq(2)
+      sys_a.n_inputs.should eq(2)
+      sys_a.n_outputs.should eq(2)
+    end
 end

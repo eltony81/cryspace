@@ -401,5 +401,57 @@ module CrySpace
 
       { {gm_low, gm_high}, {-pm_deg, pm_deg} }
     end
+
+    # Computes singular values of the frequency response matrix G(jw) over a range of frequency points.
+    # Returns: {omega, singular_values_matrix [omega.size, min(outputs, inputs)]}
+    def sigma_data(omega : Float64Tensor)
+      h = freqresp(omega)
+      n_out = n_outputs
+      n_in = n_inputs
+      w_size = omega.size
+      n_sv = {n_out, n_in}.min
+      
+      res = Float64Tensor.zeros([w_size, n_sv])
+      
+      w_size.times do |idx|
+        m_real = Float64Tensor.zeros([2 * n_out, 2 * n_in])
+        n_out.times do |r|
+          n_in.times do |c|
+            val = h.to_unsafe[(r * n_in + c) * w_size + idx]
+            real_val = val.real
+            imag_val = val.imag
+            
+            m_real[r, c] = real_val
+            m_real[r, n_in + c] = -imag_val
+            m_real[n_out + r, c] = imag_val
+            m_real[n_out + r, n_in + c] = real_val
+          end
+        end
+        
+        _, s, _ = m_real.svd
+        n_sv.times do |i|
+          res[idx, i] = s[2 * i].value
+        end
+      end
+      
+      {omega, res}
+    end
+
+    # Computes prefilter tracking scaling gain N for zero steady-state tracking error under LQR control u = -Kx + Nr
+    def nbar(k_gain : Float64Tensor) : Float64Tensor
+      n = n_states
+      if @dt.nil? || @dt == 0
+        a_cl = @a - @b.matmul(k_gain)
+        inv_acl = a_cl.inv
+        term = @c.matmul(inv_acl).matmul(@b)
+        (-term + @d).inv
+      else
+        eye = Float64Tensor.identity(n)
+        a_cl = eye - (@a - @b.matmul(k_gain))
+        inv_acl = a_cl.inv
+        term = @c.matmul(inv_acl).matmul(@b)
+        (term + @d).inv
+      end
+    end
   end
 end

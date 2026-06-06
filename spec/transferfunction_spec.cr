@@ -69,4 +69,19 @@ describe CrySpace::TransferFunction do
     lag.num[1].value.should be_close(15.0, 1e-9)
     lag.den[1].value.should be_close(0.5, 1e-9)
   end
+
+  it "designs Butterworth filters" do
+    # 1st-order Butterworth lowpass with cutoff Wn = 2.0 rad/s
+    # G(s) = 2 / (s + 2)
+    but1 = CrySpace::TransferFunction.butter(1, 2.0)
+    but1.num[0].value.should be_close(2.0, 1e-9)
+    but1.den[1].value.should be_close(2.0, 1e-9)
+
+    # 2nd-order Butterworth lowpass with Wn = 1.0 rad/s
+    # G(s) = 1 / (s^2 + sqrt(2)*s + 1)
+    but2 = CrySpace::TransferFunction.butter(2, 1.0)
+    but2.num[0].value.should be_close(1.0, 1e-9)
+    but2.den[1].value.should be_close(Math.sqrt(2.0), 1e-5)
+    but2.den[2].value.should be_close(1.0, 1e-9)
+  end
 end

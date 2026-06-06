@@ -259,5 +259,36 @@ def to_statespace
       raise ArgumentError.new("Zero must be greater than pole for a lag compensator") if zero <= pole
       TransferFunction.new([gain, gain * zero].to_tensor, [1.0, pole].to_tensor)
     end
+
+    # Designs an analog lowpass Butterworth filter of a given order and cutoff frequency Wn.
+    def self.butter(order : Int32, wn : Float64) : TransferFunction
+      raise ArgumentError.new("Butterworth filter order must be at least 1") if order < 1
+      raise ArgumentError.new("Cutoff frequency Wn must be positive") if wn <= 0.0
+      
+      poles = Array(Complex).new(order)
+      order.times do |k|
+        theta = Math::PI * (2 * (k + 1) + order - 1) / (2 * order)
+        poles << Complex.new(wn * Math.cos(theta), wn * Math.sin(theta))
+      end
+      
+      reconstruct = ->(roots : Array(Complex)) {
+        poly = [Complex.new(1.0, 0.0)]
+        roots.each do |r|
+          next_poly = Array(Complex).new(poly.size + 1, Complex.new(0.0, 0.0))
+          poly.size.times do |i|
+            next_poly[i] += poly[i]
+            next_poly[i + 1] += poly[i] * -r
+          end
+          poly = next_poly
+        end
+        poly.map(&.real).to_tensor
+      }
+      
+      den = reconstruct.call(poles)
+      num_val = wn ** order
+      num = [num_val].to_tensor
+      
+      TransferFunction.new(num, den)
+    end
   end
 end

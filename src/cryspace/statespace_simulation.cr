@@ -381,5 +381,35 @@ module CrySpace
       
       {t, x_matrix, x_est_matrix, y_matrix, u_matrix}
     end
+
+    # Simulates ramp response of discrete or continuous (sampled) system.
+    def ramp_response(n_steps = 100)
+      sys = self
+      curr_dt = @dt
+      unless curr_dt && curr_dt > 0
+        sys = self.sample(0.1)
+      end
+      
+      dt = sys.dt.not_nil!
+      x = Float64Tensor.zeros([sys.n_states, 1])
+      
+      t_arr = Array(Float64).new(n_steps)
+      x_arr = Array(Float64Tensor).new(n_steps)
+      y_arr = Array(Float64Tensor).new(n_steps)
+      
+      n_steps.times do |i|
+        t_val = i * dt
+        t_arr << t_val
+        u = Float64Tensor.zeros([sys.n_inputs, 1])
+        sys.n_inputs.times { |idx| u[idx, 0] = t_val }
+        
+        x_arr << x
+        y = sys.c.matmul(x) + sys.d.matmul(u)
+        y_arr << y
+        x = sys.a.matmul(x) + sys.b.matmul(u)
+      end
+      
+      {t_arr, x_arr, y_arr}
+    end
   end
 end
