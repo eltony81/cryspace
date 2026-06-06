@@ -22,11 +22,6 @@ module CrySpace
         return TransferFunction.new([1.0].to_tensor, [1.0].to_tensor)
       end
 
-      # Coefficients are calculated using standard recurrence formula:
-      # c_k = (order)! * (2*order - k)! / ( k! * (order - k)! * (2*order)! )
-      # num_k = (-delay)^k * c_k
-      # den_k = (delay)^k * c_k
-      
       factorial = ->(n : Int32) {
         val = 1.0
         (1..n).each { |i| val *= i }
@@ -37,8 +32,6 @@ module CrySpace
       den_arr = Array(Float64).new(order + 1, 0.0)
 
       (order + 1).times do |k|
-        # Coeff index corresponding to s^(order - k)
-        # Power is (order - k)
         power = order - k
         c_val = (factorial.call(order) * factorial.call(2 * order - power)) /
                 (factorial.call(power) * factorial.call(order - power) * factorial.call(2 * order))
@@ -49,6 +42,7 @@ module CrySpace
 
       TransferFunction.new(num_arr.to_tensor, den_arr.to_tensor)
     end
+
     def poles : Array(Complex)
       roots(@den)
     end
@@ -58,8 +52,6 @@ module CrySpace
     end
 
     private def roots(poly : Float64Tensor) : Array(Complex)
-      # Roots of polynomial using companion matrix eigenvalues
-      # Assumes poly[0] is the coefficient of highest power
       n = poly.size - 1
       return Array(Complex).new if n <= 0
       
@@ -71,138 +63,84 @@ module CrySpace
         companion[i + 1, i] = 1.0
       end
       n.times do |i|
-        # coefficients are in order [p0, p1, ..., pn]
-        # characteristic eq: s^n + a1 s^(n-1) + ... + an = 0
-        # companion matrix first row: [-a1, -a2, ..., -an]
         companion[0, i] = -p[i + 1].value
       end
       companion.eigvals_c.to_a
     end
 
-def +(other : TransferFunction)
-  # G1 + G2 = (N1*D2 + N2*D1) / (D1*D2)
-  n1 = poly_mul(@num, other.den)
-  n2 = poly_mul(other.num, @den)
+    # Minimal realization for transfer function: performs pole-zero cancellation
+    def minreal(tol = 1e-3) : TransferFunction
+      p_list = poles
+      z_list = zeros
+      
+      cancelled_poles = Array(Complex).new
+      cancelled_zeros = Array(Complex).new
 
-  num_new = poly_add(n1, n2)
-  den_new = poly_mul(@den, other.den)
+      keep_poles = p_list.dup
+      keep_zeros = z_list.dup
 
-  TransferFunction.new(num_new, den_new, @dt)
-end
-
-def *(other : TransferFunction)
-  # G1 * G2 = (N1*N2) / (D1*D2)
-  num_new = poly_mul(@num, other.num)
-  den_new = poly_mul(@den, other.den)
-
-  TransferFunction.new(num_new, den_new, @dt)
-end
-
-def feedback(other : TransferFunction, sign = -1)
-  # G_cl = G1 / (1 - sign * G1*G2)
-  # sign = -1 (Negative feedback): (N1*D2) / (D1*D2 + N1*N2)
-  # sign = 1 (Positive feedback): (N1*D2) / (D1*D2 - N1*N2)
-  num_new = poly_mul(@num, other.den)
-  
-  prod = poly_mul(@num, other.num)
-  if sign == 1
-    # Subtract prod
-    neg_prod = prod * -1.0
-    den_new = poly_add(poly_mul(@den, other.den), neg_prod)
-  else
-    den_new = poly_add(poly_mul(@den, other.den), prod)
-  end
-
-  TransferFunction.new(num_new, den_new, @dt)
-end
-
-# Minimal realization for transfer function: performs pole-zero cancellation
-def minreal(tol = 1e-3) : TransferFunction
-  p_list = poles
-  z_list = zeros
-  
-  cancelled_poles = Array(Complex).new
-  cancelled_zeros = Array(Complex).new
-
-  keep_poles = p_list.dup
-  keep_zeros = z_list.dup
-
-  p_list.each do |p|
-    z_list.each do |z|
-      if (p - z).abs < tol && keep_poles.includes?(p) && keep_zeros.includes?(z)
-        keep_poles.delete(p)
-        keep_zeros.delete(z)
-        cancelled_poles << p
-        cancelled_zeros << z
+      p_list.each do |p|
+        z_list.each do |z|
+          if (p - z).abs < tol && keep_poles.includes?(p) && keep_zeros.includes?(z)
+            keep_poles.delete(p)
+            keep_zeros.delete(z)
+            cancelled_poles << p
+            cancelled_zeros << z
+          end
+        end
       end
-    end
-  end
 
-  # Reconstruct polynomial from remaining roots
-  # poly = (s - r1)(s - r2)...
-  reconstruct = ->(roots : Array(Complex)) {
-    return [[1.0]].to_tensor if roots.empty?
-    # Start with poly = [1.0]
-    poly = [1.0]
-    roots.each do |r|
-      # multiply poly by (s - r)
-      # if r is complex, we might have complex coefficients, but control system polynomials are real.
-      # To keep it robust, we do polynomial multiplication with complex numbers, then take real parts
-      next_poly = Array(Complex).new(poly.size + 1, Complex.new(0.0, 0.0))
-      poly.size.times do |i|
-        # s * poly[i] -> index i
-        next_poly[i] += Complex.new(poly[i], 0.0)
-        # -r * poly[i] -> index i+1
-        next_poly[i + 1] += Complex.new(poly[i], 0.0) * -r
+      reconstruct = ->(roots : Array(Complex)) {
+        return [[1.0]].to_tensor if roots.empty?
+        poly = [1.0]
+        roots.each do |r|
+          next_poly = Array(Complex).new(poly.size + 1, Complex.new(0.0, 0.0))
+          poly.size.times do |i|
+            next_poly[i] += Complex.new(poly[i], 0.0)
+            next_poly[i + 1] += Complex.new(poly[i], 0.0) * -r
+          end
+          poly = next_poly.map(&.real)
+        end
+        poly.to_tensor
+      }
+
+      num_new = reconstruct.call(keep_zeros)
+      den_new = reconstruct.call(keep_poles)
+
+      TransferFunction.new(num_new, den_new, @dt)
+    end
+
+    private def poly_mul(p1 : Float64Tensor, p2 : Float64Tensor)
+      n1 = p1.size
+      n2 = p2.size
+      res_size = n1 + n2 - 1
+      res = Array(Float64).new(res_size, 0.0)
+
+      n1.times do |i|
+        n2.times do |j|
+          res[i + j] += p1[i].value * p2[j].value
+        end
       end
-      poly = next_poly.map(&.real)
+      res.to_tensor
     end
-    poly.to_tensor
-  }
 
-  num_new = reconstruct.call(keep_zeros)
-  den_new = reconstruct.call(keep_poles)
+    private def poly_add(p1 : Float64Tensor, p2 : Float64Tensor)
+      n1 = p1.size
+      n2 = p2.size
+      res_size = {n1, n2}.max
+      res = Array(Float64).new(res_size, 0.0)
 
-  # Scale back to match the original DC gain / high frequency gain scale if needed
-  # We can normalize the lead coefficient of denominator to 1.0 (done by constructor)
-  TransferFunction.new(num_new, den_new, @dt)
-end
-
-private def poly_mul(p1 : Float64Tensor, p2 : Float64Tensor)
-  n1 = p1.size
-  n2 = p2.size
-  res_size = n1 + n2 - 1
-  res = Array(Float64).new(res_size, 0.0)
-
-  n1.times do |i|
-    n2.times do |j|
-      res[i + j] += p1[i].value * p2[j].value
+      res_size.times do |i|
+        idx1 = n1 - 1 - i
+        idx2 = n2 - 1 - i
+        val1 = idx1 >= 0 ? p1[idx1].value : 0.0
+        val2 = idx2 >= 0 ? p2[idx2].value : 0.0
+        res[res_size - 1 - i] = val1 + val2
+      end
+      res.to_tensor
     end
-  end
-  res.to_tensor
-end
 
-private def poly_add(p1 : Float64Tensor, p2 : Float64Tensor)
-  n1 = p1.size
-  n2 = p2.size
-  res_size = {n1, n2}.max
-  res = Array(Float64).new(res_size, 0.0)
-
-  res_size.times do |i|
-    idx1 = n1 - 1 - i
-    idx2 = n2 - 1 - i
-    val1 = idx1 >= 0 ? p1[idx1].value : 0.0
-    val2 = idx2 >= 0 ? p2[idx2].value : 0.0
-    res[res_size - 1 - i] = val1 + val2
-  end
-  res.to_tensor
-end
-
-def to_statespace
-...
-
-      # Convert to StateSpace using Controllable Canonical Form
-      # Assumes SISO system
+    def to_statespace
       n = @den.size - 1
       if n == 0
         return StateSpace.new(
@@ -225,7 +163,6 @@ def to_statespace
       b = Float64Tensor.zeros([n, 1])
       b[0, 0] = 1.0
 
-      # Pad numerator with zeros if needed
       num_padded = Float64Tensor.zeros([n + 1])
       offset = n + 1 - @num.size
       @num.size.times do |i|
@@ -239,7 +176,6 @@ def to_statespace
       end
 
       d = [[b0]].to_tensor
-
       StateSpace.new(a, b, c, d, @dt)
     end
 
@@ -260,7 +196,6 @@ def to_statespace
       TransferFunction.new([gain, gain * zero].to_tensor, [1.0, pole].to_tensor)
     end
 
-    # Designs an analog lowpass Butterworth filter of a given order and cutoff frequency Wn.
     def self.butter(order : Int32, wn : Float64) : TransferFunction
       raise ArgumentError.new("Butterworth filter order must be at least 1") if order < 1
       raise ArgumentError.new("Cutoff frequency Wn must be positive") if wn <= 0.0
@@ -291,19 +226,16 @@ def to_statespace
       TransferFunction.new(num, den)
     end
 
-    # Computes the Sensitivity function S = 1 / (1 + G*K)
     def sensitivity(k : TransferFunction) : TransferFunction
       one = TransferFunction.new([1.0].to_tensor, [1.0].to_tensor, @dt)
       one.feedback(self * k)
     end
 
-    # Computes the Complementary Sensitivity function T = G*K / (1 + G*K)
     def complementary_sensitivity(k : TransferFunction) : TransferFunction
       one = TransferFunction.new([1.0].to_tensor, [1.0].to_tensor, @dt)
       (self * k).feedback(one)
     end
 
-    # Transforms a lowpass filter to a highpass filter with given cutoff frequency.
     def lowpass_to_highpass(cutoff_frequency : Float64) : TransferFunction
       n = @den.size - 1
       num_padded = Array(Float64).new(n + 1, 0.0)
@@ -330,7 +262,6 @@ def to_statespace
       Complex.new(sqrt_r * Math.cos(theta / 2.0), sqrt_r * Math.sin(theta / 2.0))
     end
 
-    # Transforms a lowpass filter to a bandpass filter with given center frequency and bandwidth.
     def lowpass_to_bandpass(center_frequency : Float64, bandwidth : Float64) : TransferFunction
       p_list = poles
       z_list = zeros
@@ -380,13 +311,11 @@ def to_statespace
       TransferFunction.new(num_new, den_new, @dt)
     end
 
-    # Discretizes a continuous TransferFunction directly.
     def to_discrete(dt : Float64, method : Symbol = :zoh) : TransferFunction
       if method == :matched
         s_poles = poles
         s_zeros = zeros
         
-        # Complex exponential mapping: e^(s * dt)
         complex_exp = ->(c : Complex) {
           r = Math.exp(c.real * dt)
           theta = c.imag * dt
@@ -438,21 +367,6 @@ def to_statespace
       res
     end
 
-    # Evaluates the transfer function at a complex frequency s.
-    def evaluate(s : Complex) : Complex
-      n_num = @num.size
-      n_den = @den.size
-      num_val = Complex.new(0.0, 0.0)
-      n_num.times do |i|
-        num_val += Complex.new(@num[i].value, 0.0) * complex_power(s, n_num - 1 - i)
-      end
-      den_val = Complex.new(0.0, 0.0)
-      n_den.times do |i|
-        den_val += Complex.new(@den[i].value, 0.0) * complex_power(s, n_den - 1 - i)
-      end
-      num_val / den_val
-    end
-
     # Reconstructs polynomial coefficients from its roots.
     def self.reconstruct_poly(roots : Array(Complex)) : Float64Tensor
       poly = [Complex.new(1.0, 0.0)]
@@ -467,22 +381,18 @@ def to_statespace
       poly.map(&.real).to_tensor
     end
 
-    # Designs a phase lead or lag compensator: Gc(s) = gain * (s + zero) / (s + pole).
     def self.leadlag(zero : Float64, pole : Float64, gain : Float64 = 1.0) : TransferFunction
       TransferFunction.new([gain, gain * zero].to_tensor, [1.0, pole].to_tensor)
     end
 
-    # Generates a standard loop shaping weighting filter: W(s) = (s/high + middle) / (s + middle * low).
     def self.makeweight(low : Float64, middle : Float64, high : Float64) : TransferFunction
       TransferFunction.new([1.0 / high, middle].to_tensor, [1.0, middle * low].to_tensor)
     end
 
-    # Converts a discrete TransferFunction back to continuous.
     def to_continuous : TransferFunction
       to_statespace.to_continuous.to_transferfunction
     end
 
-    # Designs an analog lowpass Chebyshev Type I filter of given order, passband ripple rp, and cutoff frequency Wn.
     def self.cheby1(order : Int32, rp : Float64, wn : Float64) : TransferFunction
       raise ArgumentError.new("Order must be at least 1") if order < 1
       raise ArgumentError.new("Cutoff frequency Wn must be positive") if wn <= 0.0
@@ -519,12 +429,10 @@ def to_statespace
       TransferFunction.new(num, den)
     end
 
-    # Designs a digital lowpass Butterworth filter using bilinear discretization.
     def self.butter_digital(order : Int32, wn : Float64, dt : Float64) : TransferFunction
       butter(order, wn).to_discrete(dt, :tustin)
     end
 
-    # Computes the Routh-Hurwitz stability table for the denominator polynomial of a continuous system.
     def routh_hurwitz : NamedTuple(stable: Bool, table: Array(Array(Float64)))
       coeffs = @den.to_a
       n = coeffs.size - 1
@@ -567,7 +475,6 @@ def to_statespace
       {stable: stable, table: table}
     end
 
-    # Computes the Jury stability table for discrete systems.
     def jury_test : NamedTuple(stable: Bool, table: Array(Array(Float64)))
       coeffs = @den.to_a
       n = coeffs.size - 1
@@ -621,7 +528,6 @@ def to_statespace
       {stable: stable, table: rows}
     end
 
-    # Designs a continuous-time notch filter G(s) = (s^2 + w0^2) / (s^2 + 2*zeta*w0*s + w0^2).
     def self.notch(w0 : Float64, zeta : Float64) : TransferFunction
       raise ArgumentError.new("Center frequency w0 must be positive") if w0 <= 0.0
       raise ArgumentError.new("Damping ratio zeta must be positive") if zeta <= 0.0
