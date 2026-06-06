@@ -518,5 +518,54 @@ describe CrySpace::StateSpace do
       l_gain_d = sys_d.dlqe(q, r)
       l_gain_d[0, 0].value.should_not be_nil
     end
+
+    it "computes bandwidth and initial_response" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      
+      # Bandwidth of 1/(s+1) should be 1.0 rad/s (-3dB point)
+      w_bw = sys.bandwidth
+      w_bw.should be_close(1.0, 0.1)
+
+      # Initial response starting from x0 = 2.0
+      x0 = [[2.0]].to_tensor
+      t, x, y = sys.initial_response(x0, n_steps: 5)
+      y[0][0, 0].value.should be_close(2.0, 1e-9)
+      y.last[0, 0].value.should be_close(2.0 * Math.exp(-0.4), 0.1)
+    end
+
+    it "transforms to control/observable canonical forms" do
+      # 2nd order system: G(s) = 1 / (s^2 + 3s + 2)
+      a = [[0.0, 1.0], [-2.0, -3.0]].to_tensor
+      b = [[0.0], [1.0]].to_tensor
+      c = [[1.0, 0.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+
+      # Control Canonical Form
+      sys_ccf, t_ccf = sys.to_control_canonical_form
+      sys_ccf.n_states.should eq(2)
+      # Observable Canonical Form
+      sys_ocf, t_ocf = sys.to_observable_canonical_form
+      sys_ocf.n_states.should eq(2)
+    end
+
+    it "performs feedback and minreal on TransferFunction" do
+      # G(s) = 1 / (s + 2)
+      num1 = [1.0].to_tensor
+      den1 = [1.0, 2.0].to_tensor
+      g1 = CrySpace::TransferFunction.new(num1, den1)
+
+      # Feedback G1 / (1 + G1) => 1 / (s + 3)
+      g_cl = g1.feedback(CrySpace::TransferFunction.new([1.0].to_tensor, [1.0].to_tensor))
+      g_cl.den[1].value.should be_close(3.0, 1e-9)
+
+      # Minreal: G(s) = (s + 1) / ( (s+1)(s+2) ) => 1 / (s + 2)
+      num2 = [1.0, 1.0].to_tensor
+      den2 = [1.0, 3.0, 2.0].to_tensor # s^2 + 3s + 2
+      g2 = CrySpace::TransferFunction.new(num2, den2)
+      g2_min = g2.minreal
+      g2_min.poles.size.should eq(1)
+      g2_min.poles[0].real.should be_close(-2.0, 1e-3)
+    end
 end
 

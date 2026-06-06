@@ -259,6 +259,7 @@ module CrySpace
       {t, x_matrix, y_matrix}
     end
 
+    # Simulates impulse response of discrete or continuous (sampled) system.
     def impulse_response(n_steps = 100)
       sys = self
       curr_dt = @dt
@@ -267,7 +268,6 @@ module CrySpace
       end
       
       dt = sys.dt.not_nil!
-      # For impulse, we set initial state x = B/dt and u = 0 (for discrete approx)
       x = Float64Tensor.zeros([sys.n_states, 1])
       
       t_arr = Array(Float64).new(n_steps)
@@ -286,6 +286,143 @@ module CrySpace
       
       {t_arr, x_arr, y_arr}
     end
+
+    # Simulates unforced free response with non-zero initial state x0.
+    def initial_response(x0 : Float64Tensor, n_steps = 100)
+      sys = self
+      curr_dt = @dt
+      unless curr_dt && curr_dt > 0
+        sys = self.sample(0.1)
+      end
+      
+      dt = sys.dt.not_nil!
+      x = x0.dup
+      
+      t_arr = Array(Float64).new(n_steps)
+      x_arr = Array(Float64Tensor).new(n_steps)
+      y_arr = Array(Float64Tensor).new(n_steps)
+      
+      n_steps.times do |i|
+        t_arr << i * dt
+        x_arr << x
+        y = sys.c.matmul(x)
+        y_arr << y
+        x = sys.a.matmul(x)
+      end
+      
+      {t_arr, x_arr, y_arr}
+    end
+
+    # Computes the system bandwidth (the frequency at which magnitude drops by 3dB from DC gain).
+    def bandwidth : Float64
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Bandwidth is only supported for SISO systems")
+      end
+
+      # Calculate DC Gain magnitude
+      dc = dcgain[0, 0].value
+      dc_mag = dc.abs
+      target_mag = dc_mag / Math.sqrt(2.0) # -3 dB point
+
+      # Sweep frequencies log-spaced
+      omega = Float64Tensor.linear_space(-2.0, 4.0, 1000).map { |v| 10.0 ** v }
+      h = freqresp(omega)
+
+      best_w = 0.0
+      min_diff = Float64::INFINITY
+      omega.size.times do |i|
+        mag = h.to_unsafe[i].abs
+        diff = (mag - target_mag).abs
+        if diff < min_diff
+          min_diff = diff
+          best_w = omega[i].value
+        end
+      end
+
+      best_w
+    end
+
+    # Transforms system to Control Canonical Form.
+    def to_control_canonical_form : Tuple(StateSpace, Float64Tensor)
+      unless n_inputs == 1
+        raise ArgumentError.new("Control canonical form only supported for single-input systems")
+      end
+      n = n_states
+      co = ctrb
+      unless is_controllable?
+        raise ArgumentError.new("System is not controllable; cannot convert to control canonical form")
+      end
+
+      # Find characteristic polynomial coefficients of A: s^n + a1 s^(n-1) + ... + an = 0
+      # Using companion matrix properties or Leverrier-Faddeev algorithm
+      # Let's use Leverrier-Faddeev algorithm to get polynomial of A:
+      poly = Array(Float64).new(n + 1, 0.0)
+      poly[0] = 1.0
+      curr_a = Float64Tensor.identity(n)
+      (1..n).each do |i|
+        curr_a = @a.matmul(curr_a)
+        trace_val = 0.0
+        n.times { |r| trace_val += curr_a[r, r].value }
+        ci = -trace_val / i
+        poly[i] = ci
+        curr_a = curr_a + Float64Tensor.identity(n) * ci
+      end
+
+      # Build Transformation Matrix T = Co * M
+      # where M is the upper-triangular Toeplitz matrix formed by coefficients [1, a1, a2, ..., a_n-1]
+      m_mat = Float64Tensor.zeros([n, n])
+      n.times do |i|
+        n.times do |j|
+          if j >= i
+            m_mat[i, j] = poly[j - i]
+          end
+        end
+      end
+
+      t_matrix = co.matmul(m_mat)
+      {similarity_transform(t_matrix), t_matrix}
+    end
+
+    # Transforms system to Observable Canonical Form.
+    def to_observable_canonical_form : Tuple(StateSpace, Float64Tensor)
+      unless n_outputs == 1
+        raise ArgumentError.new("Observable canonical form only supported for single-output systems")
+      end
+      n = n_states
+      ob = obsv
+      unless is_observable?
+        raise ArgumentError.new("System is not observable; cannot convert to observable canonical form")
+      end
+
+      # Find characteristic polynomial coefficients of A using Leverrier-Faddeev:
+      poly = Array(Float64).new(n + 1, 0.0)
+      poly[0] = 1.0
+      curr_a = Float64Tensor.identity(n)
+      (1..n).each do |i|
+        curr_a = @a.matmul(curr_a)
+        trace_val = 0.0
+        n.times { |r| trace_val += curr_a[r, r].value }
+        ci = -trace_val / i
+        poly[i] = ci
+        curr_a = curr_a + Float64Tensor.identity(n) * ci
+      end
+
+      # Build Toeplitz matrix M
+      m_mat = Float64Tensor.zeros([n, n])
+      n.times do |i|
+        n.times do |j|
+          if j >= i
+            m_mat[i, j] = poly[j - i]
+          end
+        end
+      end
+
+      # For observability, transformation is T_inv = M * Ob
+      t_inv = m_mat.matmul(ob)
+      t_matrix = t_inv.inv
+      {similarity_transform(t_matrix), t_matrix}
+    end
+
 
     def is_stable?
       p = poles

@@ -32,6 +32,12 @@
   - Minimal Realization solver (`minreal`) to eliminate uncontrollable and unobservable states.
   - Augmented Integrator system design (`augment_integrator`) for tracking control.
   - Optimal Kalman Estimator Gain solvers (`lqe` / `dlqe`).
+  - System Bandwidth (`bandwidth`) calculation.
+  - Impulse response (`impulse_response`) and Initial State Free response (`initial_response`) simulation.
+  - Public Controllability (`ctrb`) and Observability (`obsv`) matrix helpers.
+  - Canonical Transformations: Control Canonical Form (`to_control_canonical_form`) and Observable Canonical Form (`to_observable_canonical_form`).
+  - TransferFunction feedback loop solver with configurable signs (`feedback`).
+  - TransferFunction pole-zero cancellation (`minreal`) minimal realization.
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -615,6 +621,51 @@ l_gain = sys.lqe(q_noise, r_noise)
 # Discrete-time DLQE estimator gain design
 l_gain_d = sys_discrete.dlqe(q_noise, r_noise)
 ```
+
+#### BB. System Bandwidth (`bandwidth`)
+Calculates the bandwidth (in rad/s) for a SISO system, defined as the frequency where magnitude drops to $-3\text{ dB}$ ($70.7\%$) of the system's DC gain magnitude.
+```crystal
+w_bw = sys.bandwidth
+```
+
+#### CC. Impulse & Free Response Simulation (`impulse_response` & `initial_response`)
+Simulate system response to a unit impulse input or the unforced free response from a non-zero initial state.
+```crystal
+# Impulse response simulation
+t, x, y = sys.impulse_response(n_steps: 100)
+
+# Free response starting from initial state x0
+x0 = [[1.0], [0.0]].to_tensor
+t, x, y = sys.initial_response(x0, n_steps: 100)
+```
+
+#### DD. Public Controllability & Observability Matrices (`ctrb` & `obsv`)
+Compute raw controllability and observability matrices to analyze system properties manually.
+```crystal
+co_mat = sys.ctrb
+ob_mat = sys.obsv
+```
+
+#### EE. Canonical Realization Transformations (`to_control_canonical_form` & `to_observable_canonical_form`)
+Transform single-input or single-output systems to Control Canonical Form (CCF) or Observable Canonical Form (OCF).
+```crystal
+# CCF transformation: returns {ccf_system, T_matrix}
+sys_ccf, t_ccf = sys.to_control_canonical_form
+
+# OCF transformation: returns {ocf_system, T_matrix}
+sys_ocf, t_ocf = sys.to_observable_canonical_form
+```
+
+#### FF. TransferFunction Feedback Loop & Minimal Realization (`feedback` & `minreal`)
+Perform algebraic control loop interconnection with custom feedback signs, and execute numerical pole-zero cancellation on transfer functions.
+```crystal
+# Positive feedback loop: G_cl = G1 / (1 - G1 * G2)
+g_cl = g1.feedback(g2, sign: 1)
+
+# Minimal realization: cancels poles and zeros that are within a specified tolerance
+g_minimal = g.minreal(tol: 1e-3)
+```
+
 
 
 

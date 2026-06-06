@@ -64,10 +64,72 @@ def *(other : TransferFunction)
 end
 
 def feedback(other : TransferFunction, sign = -1)
-  # G_cl = G1 / (1 + G1*G2) = (N1*D2) / (D1*D2 + N1*N2)
+  # G_cl = G1 / (1 - sign * G1*G2)
+  # sign = -1 (Negative feedback): (N1*D2) / (D1*D2 + N1*N2)
+  # sign = 1 (Positive feedback): (N1*D2) / (D1*D2 - N1*N2)
   num_new = poly_mul(@num, other.den)
-  den_new = poly_add(poly_mul(@den, other.den), poly_mul(@num, other.num))
+  
+  prod = poly_mul(@num, other.num)
+  if sign == 1
+    # Subtract prod
+    neg_prod = prod * -1.0
+    den_new = poly_add(poly_mul(@den, other.den), neg_prod)
+  else
+    den_new = poly_add(poly_mul(@den, other.den), prod)
+  end
 
+  TransferFunction.new(num_new, den_new, @dt)
+end
+
+# Minimal realization for transfer function: performs pole-zero cancellation
+def minreal(tol = 1e-3) : TransferFunction
+  p_list = poles
+  z_list = zeros
+  
+  cancelled_poles = Array(Complex).new
+  cancelled_zeros = Array(Complex).new
+
+  keep_poles = p_list.dup
+  keep_zeros = z_list.dup
+
+  p_list.each do |p|
+    z_list.each do |z|
+      if (p - z).abs < tol && keep_poles.includes?(p) && keep_zeros.includes?(z)
+        keep_poles.delete(p)
+        keep_zeros.delete(z)
+        cancelled_poles << p
+        cancelled_zeros << z
+      end
+    end
+  end
+
+  # Reconstruct polynomial from remaining roots
+  # poly = (s - r1)(s - r2)...
+  reconstruct = ->(roots : Array(Complex)) {
+    return [[1.0]].to_tensor if roots.empty?
+    # Start with poly = [1.0]
+    poly = [1.0]
+    roots.each do |r|
+      # multiply poly by (s - r)
+      # if r is complex, we might have complex coefficients, but control system polynomials are real.
+      # To keep it robust, we do polynomial multiplication with complex numbers, then take real parts
+      next_poly = Array(Complex).new(poly.size + 1, Complex.new(0.0, 0.0))
+      poly.size.times do |i|
+        # s * poly[i] -> index i
+        next_poly[i] += Complex.new(poly[i], 0.0)
+        # -r * poly[i] -> index i+1
+        next_poly[i + 1] += Complex.new(poly[i], 0.0) * -r
+      end
+      poly = next_poly.map(&.real)
+    end
+    poly.to_tensor
+  }
+
+  num_new = reconstruct.call(keep_zeros)
+  den_new = reconstruct.call(keep_poles)
+
+  # Scale back to match the original DC gain / high frequency gain scale if needed
+  # We can normalize the lead coefficient of denominator to 1.0 (done by constructor)
   TransferFunction.new(num_new, den_new, @dt)
 end
 
