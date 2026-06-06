@@ -437,9 +437,86 @@ describe CrySpace::StateSpace do
       deg[0].should be_close(-45.0, 1e-3)
       
       # Margin
-      gm, gm_db, pm, w_gc, w_pc = sys.margin
+      gm, gm_db, pm, w_gc, w_pc = sys.stability_margins
       gm.should eq(Float64::INFINITY)
       pm.should eq(0.0)
+    end
+
+    it "performs similarity transformations" do
+      # System: dx/dt = -x + u, y = x
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      # Transform state: z = 2 * x => x = 0.5 * z
+      t_matrix = [[2.0]].to_tensor
+      sys_t = sys.similarity_transform(t_matrix)
+      
+      sys_t.a[0, 0].value.should be_close(-1.0, 1e-9)
+      sys_t.b[0, 0].value.should be_close(0.5, 1e-9)
+      sys_t.c[0, 0].value.should be_close(2.0, 1e-9)
+    end
+
+    it "performs Kalman controllability & observability decompositions" do
+      # 2nd-order system where state 2 is uncontrollable: dx/dt = [[-1, 0], [0, -2]]*x + [[1], [0]]*u
+      a = [[-1.0, 0.0], [0.0, -2.0]].to_tensor
+      b = [[1.0], [0.0]].to_tensor
+      c = [[1.0, 1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      sys_c, _, r_c = sys.controllable_decomposition
+      r_c.should eq(1) # Controllable rank is 1
+      
+      # 2nd-order system where state 2 is unobservable: y = [[1, 0]]*x
+      c2 = [[1.0, 0.0]].to_tensor
+      sys2 = CrySpace::StateSpace.new(a, b, c2, d)
+      
+      sys_o, _, r_o = sys2.observable_decomposition
+      r_o.should eq(1) # Observable rank is 1
+    end
+
+    it "finds minimal realization using minreal" do
+      # System has 3 states: State 1 (stable/controllable/observable),
+      # State 2 (uncontrollable), State 3 (unobservable)
+      # Should reduce from 3 states to 1 state
+      a = [[-1.0, 0.0, 0.0], [0.0, -2.0, 0.0], [0.0, 0.0, -3.0]].to_tensor
+      b = [[1.0], [0.0], [1.0]].to_tensor
+      c = [[1.0, 1.0, 0.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      sys_min = sys.minreal
+      sys_min.n_states.should eq(1)
+      sys_min.poles[0].real.should be_close(-1.0, 1e-4)
+    end
+
+    it "augments systems with integral action" do
+      # Double integrator system
+      sys = CrySpace::StateSpace.new([[0.0, 1.0], [0.0, 0.0]].to_tensor, [[0.0], [1.0]].to_tensor, [[1.0, 0.0]].to_tensor, [[0.0]].to_tensor)
+      sys_aug = sys.augment_integrator
+      
+      sys_aug.n_states.should eq(3) # 2 plant states + 1 integrator state
+      sys_aug.n_inputs.should eq(1)
+      sys_aug.n_outputs.should eq(1)
+      
+      sys_aug.a[2, 0].value.should be_close(-1.0, 1e-9) # -C row
+    end
+
+    it "calculates optimal Kalman estimator gains via LQE / DLQE" do
+      # SISO System: G(s) = 1 / (s + 1)
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      
+      q = [[1.0]].to_tensor
+      r = [[1.0]].to_tensor
+      
+      # Continuous LQE:
+      # P solves: -2*P - P^2 + 1 = 0 => P^2 + 2*P - 1 = 0 => P = -1 + sqrt(2) = 0.4142
+      # L = P * C^T * R^-1 = 0.4142
+      l_gain = sys.lqe(q, r)
+      l_gain[0, 0].value.should be_close(0.4142, 1e-4)
+      
+      # Discrete DLQE:
+      sys_d = sys.sample(0.5)
+      l_gain_d = sys_d.dlqe(q, r)
+      l_gain_d[0, 0].value.should_not be_nil
     end
 end
 

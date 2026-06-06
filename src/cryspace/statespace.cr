@@ -1141,9 +1141,202 @@ module CrySpace
       {omega, db, deg}
     end
 
-    # Unified stability margins analyzer (alias for stability_margins)
-    def margin
-      stability_margins
+    # Performs coordinate transformation z = T * x (i.e. x = T_inv * z)
+    def similarity_transform(t_matrix : Float64Tensor) : StateSpace
+      t_inv = t_matrix.inv
+      a_new = t_inv.matmul(@a).matmul(t_matrix)
+      b_new = t_inv.matmul(@b)
+      c_new = @c.matmul(t_matrix)
+      StateSpace.new(a_new, b_new, c_new, @d, @dt)
+    end
+
+    # Computes the controllability decomposition (controllable / uncontrollable parts).
+    # Returns {transformed_system, T_matrix, controllable_rank}
+    def controllable_decomposition : Tuple(StateSpace, Float64Tensor, Int32)
+      n = n_states
+      m = n_inputs
+      
+      co = Float64Tensor.zeros([n, n * m])
+      curr = @b.dup
+      n.times do |i|
+        m.times do |c_idx|
+          n.times do |r_idx|
+            co[r_idx, i * m + c_idx] = curr[r_idx, c_idx].value
+          end
+        end
+        curr = @a.matmul(curr) if i < n - 1
+      end
+      
+      u, s, vt = co.svd
+      
+      r = 0
+      s.size.times do |i|
+        r += 1 if s[i].value > 1e-9
+      end
+      
+      t_matrix = u
+      t_inv = t_matrix.transpose
+      
+      a_c = t_inv.matmul(@a).matmul(t_matrix)
+      b_c = t_inv.matmul(@b)
+      c_c = @c.matmul(t_matrix)
+      
+      {StateSpace.new(a_c, b_c, c_c, @d, @dt), t_matrix, r}
+    end
+
+    # Computes the observability decomposition (observable / unobservable parts).
+    # Returns {transformed_system, T_matrix, observable_rank}
+    def observable_decomposition : Tuple(StateSpace, Float64Tensor, Int32)
+      n = n_states
+      p = n_outputs
+      
+      ob = Float64Tensor.zeros([n * p, n])
+      curr = @c.dup
+      n.times do |i|
+        p.times do |r_idx|
+          n.times do |c_idx|
+            ob[i * p + r_idx, c_idx] = curr[r_idx, c_idx].value
+          end
+        end
+        curr = curr.matmul(@a) if i < n - 1
+      end
+      
+      u, s, vt = ob.svd
+      
+      r = 0
+      s.size.times do |i|
+        r += 1 if s[i].value > 1e-9
+      end
+      
+      t_matrix = vt.transpose
+      t_inv = vt
+      
+      a_o = t_inv.matmul(@a).matmul(t_matrix)
+      b_o = t_inv.matmul(@b)
+      c_o = @c.matmul(t_matrix)
+      
+      {StateSpace.new(a_o, b_o, c_o, @d, @dt), t_matrix, r}
+    end
+
+    # Computes the minimal realization of the system.
+    # Eliminates uncontrollable and unobservable states.
+    def minreal : StateSpace
+      n = n_states
+      return self if n == 0
+      
+      # Step 1: Controllability Decomposition
+      sys_c, _, r_c = controllable_decomposition
+      return StateSpace.new(Float64Tensor.zeros([0, 0]), Float64Tensor.zeros([0, n_inputs]), Float64Tensor.zeros([n_outputs, 0]), @d, @dt) if r_c == 0
+      
+      a_c = Float64Tensor.zeros([r_c, r_c])
+      b_c = Float64Tensor.zeros([r_c, n_inputs])
+      c_c = Float64Tensor.zeros([n_outputs, r_c])
+      
+      r_c.times do |r|
+        r_c.times do |c_idx|
+          a_c[r, c_idx] = sys_c.a[r, c_idx].value
+        end
+        n_inputs.times do |c_idx|
+          b_c[r, c_idx] = sys_c.b[r, c_idx].value
+        end
+      end
+      n_outputs.times do |r|
+        r_c.times do |c_idx|
+          c_c[r, c_idx] = sys_c.c[r, c_idx].value
+        end
+      end
+      
+      sys_controllable = StateSpace.new(a_c, b_c, c_c, @d, @dt)
+      
+      # Step 2: Observability Decomposition on the controllable subsystem
+      sys_o, _, r_o = sys_controllable.observable_decomposition
+      return StateSpace.new(Float64Tensor.zeros([0, 0]), Float64Tensor.zeros([0, n_inputs]), Float64Tensor.zeros([n_outputs, 0]), @d, @dt) if r_o == 0
+      
+      a_o = Float64Tensor.zeros([r_o, r_o])
+      b_o = Float64Tensor.zeros([r_o, n_inputs])
+      c_o = Float64Tensor.zeros([n_outputs, r_o])
+      
+      r_o.times do |r|
+        r_o.times do |c_idx|
+          a_o[r, c_idx] = sys_o.a[r, c_idx].value
+        end
+        n_inputs.times do |c_idx|
+          b_o[r, c_idx] = sys_o.b[r, c_idx].value
+        end
+      end
+      n_outputs.times do |r|
+        r_o.times do |c_idx|
+          c_o[r, c_idx] = sys_o.c[r, c_idx].value
+        end
+      end
+      
+      StateSpace.new(a_o, b_o, c_o, @d, @dt)
+    end
+
+    # Augments the state-space system with an integrator for tracking control.
+    # Returns the augmented StateSpace system.
+    def augment_integrator : StateSpace
+      n = n_states
+      m = n_inputs
+      p = n_outputs
+      
+      a_aug = Float64Tensor.zeros([n + p, n + p])
+      n.times do |r|
+        n.times do |c_idx|
+          a_aug[r, c_idx] = @a[r, c_idx].value
+        end
+      end
+      p.times do |r|
+        n.times do |c_idx|
+          a_aug[n + r, c_idx] = -@c[r, c_idx].value
+        end
+      end
+      
+      b_aug = Float64Tensor.zeros([n + p, m])
+      n.times do |r|
+        m.times do |c_idx|
+          b_aug[r, c_idx] = @b[r, c_idx].value
+        end
+      end
+      p.times do |r|
+        m.times do |c_idx|
+          b_aug[n + r, c_idx] = -@d[r, c_idx].value
+        end
+      end
+      
+      c_aug = Float64Tensor.zeros([p, n + p])
+      p.times do |r|
+        n.times do |c_idx|
+          c_aug[r, c_idx] = @c[r, c_idx].value
+        end
+      end
+      
+      d_aug = Float64Tensor.zeros([p, m])
+      p.times do |r|
+        m.times do |c_idx|
+          d_aug[r, c_idx] = @d[r, c_idx].value
+        end
+      end
+      
+      StateSpace.new(a_aug, b_aug, c_aug, d_aug, @dt)
+    end
+
+    # Computes the optimal Kalman estimator gain L for continuous systems.
+    # Q is process noise covariance matrix, R is measurement noise covariance matrix.
+    def lqe(q_noise : Float64Tensor, r_noise : Float64Tensor) : Float64Tensor
+      dual_sys = StateSpace.new(@a.transpose, @c.transpose, @b.transpose, @d.transpose, @dt)
+      p = dual_sys.care(q_noise, r_noise)
+      p.matmul(@c.transpose).matmul(r_noise.inv)
+    end
+
+    # Computes the optimal Kalman estimator gain L for discrete systems.
+    # Q is process noise covariance matrix, R is measurement noise covariance matrix.
+    def dlqe(q_noise : Float64Tensor, r_noise : Float64Tensor) : Float64Tensor
+      dual_sys = StateSpace.new(@a.transpose, @c.transpose, @b.transpose, @d.transpose, @dt)
+      p = dual_sys.dare(q_noise, r_noise)
+      c_p_ct = @c.matmul(p).matmul(@c.transpose)
+      inv_term = (c_p_ct + r_noise).inv
+      @a.matmul(p).matmul(@c.transpose).matmul(inv_term)
     end
 
     def to_s(io)

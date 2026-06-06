@@ -27,6 +27,11 @@
   - Tustin (Bilinear) and Generalized Bilinear Discretization (`sample(dt, method: :tustin)`).
   - Balanced Truncation Model Reduction (`balred`).
   - Optimal Linear Quadratic Gaussian (`lqg`) controller synthesis.
+  - Similarity Transformation (`similarity_transform`).
+  - Kalman Controllability and Observability Decomposition (`controllable_decomposition` and `observable_decomposition`).
+  - Minimal Realization solver (`minreal`) to eliminate uncontrollable and unobservable states.
+  - Augmented Integrator system design (`augment_integrator`) for tracking control.
+  - Optimal Kalman Estimator Gain solvers (`lqe` / `dlqe`).
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -566,11 +571,51 @@ omega = [0.1, 1.0, 10.0].to_tensor
 w_out, db, deg = sys.nichols_data(omega)
 ```
 
-#### V. Unified Margins Shortcut (`margin`)
+#### V. Unified Margins Shortcut (`stability_margins`)
 A quick alias to get gain and phase stability margins.
 ```crystal
-gm, gm_db, pm, w_gc, w_pc = sys.margin
+gm, gm_db, pm, w_gc, w_pc = sys.stability_margins
 ```
+
+#### W. Similarity Transformation (`similarity_transform`)
+Performs coordinate transformation $z = T x$ (meaning $x = T^{-1} z$) to represent the system in a different coordinate basis.
+```crystal
+t_matrix = [[2.0, 0.0], [0.0, 2.0]].to_tensor
+sys_transformed = sys.similarity_transform(t_matrix)
+```
+
+#### X. Kalman Controllability & Observability Decomposition (`controllable_decomposition` & `observable_decomposition`)
+Decomposes a state-space system into its controllable/uncontrollable or observable/unobservable parts.
+```crystal
+# Controllability decomposition: returns {transformed_system, T_matrix, controllable_rank}
+sys_c, t_c, rank_c = sys.controllable_decomposition
+
+# Observability decomposition: returns {transformed_system, T_matrix, observable_rank}
+sys_o, t_o, rank_o = sys.observable_decomposition
+```
+
+#### Y. Minimal Realization (`minreal`)
+Computes the minimal realization of the state-space system, eliminating uncontrollable and unobservable states to yield a system with the minimum number of states.
+```crystal
+sys_minimal = sys.minreal
+```
+
+#### Z. Augmented Integrator System (`augment_integrator`)
+Augments the state-space system with an integrator to enable zero steady-state error tracking control (often used with LQR design).
+```crystal
+sys_augmented = sys.augment_integrator
+```
+
+#### AA. Optimal Kalman Estimator Gain (`lqe` & `dlqe`)
+Solves the Continuous-Time Algebraic Riccati Equation (CARE) or Discrete-Time Algebraic Riccati Equation (DARE) using duality to compute the optimal Kalman filter estimator gain $L$.
+```crystal
+# Continuous-time LQE estimator gain design
+l_gain = sys.lqe(q_noise, r_noise)
+
+# Discrete-time DLQE estimator gain design
+l_gain_d = sys_discrete.dlqe(q_noise, r_noise)
+```
+
 
 
 ## Testing
