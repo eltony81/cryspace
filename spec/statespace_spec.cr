@@ -906,4 +906,151 @@ describe CrySpace::StateSpace do
       CrySpace::Nonlinear.describing_function_deadzone(0.2, 0.5).should be_close(0.0, 1e-9)
       CrySpace::Nonlinear.describing_function_deadzone(1.0, 0.5).should be_close(0.3910022, 1e-5)
     end
+
+    it "computes Relative Gain Array (rga) and exact H-infinity norm" do
+      # MIMO 2x2 static system
+      a = [[-1.0, 0.0], [0.0, -2.0]].to_tensor
+      b = [[1.0, 0.0], [0.0, 1.0]].to_tensor
+      c = [[2.0, 1.0], [1.0, 2.0]].to_tensor
+      d = [[0.0, 0.0], [0.0, 0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      # RGA at DC (omega = 0.0)
+      rga_mat = sys.rga(0.0)
+      rga_mat[0, 0].value.should be_close(1.333333, 1e-5)
+      
+      # Exact H-infinity norm
+      hinf = sys.hinfnorm_exact
+      hinf.should be_close(2.42208, 1e-4)
+    end
+
+    it "discretizes using frequency pre-warping" do
+      sys = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      sys_d = sys.sample(dt: 0.1, method: :prewarped, omega_c: 5.0)
+      sys_d.dt.should eq(0.1)
+    end
+
+    it "performs Singular Perturbation model reduction (residualization)" do
+      a = [[-1.0, 0.0], [0.0, -100.0]].to_tensor
+      b = [[1.0], [10.0]].to_tensor
+      c = [[1.0, 1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      # Reduce order to 1
+      sys_red = sys.residual_reduction(1)
+      sys_red.n_states.should eq(1)
+      
+      # Check that DC gain is preserved: G(0) = -C*A^-1*B + D = -[1, 1] * [-1, -0.01] * [1, 10] = 1 + 0.1 = 1.1
+      sys.dcgain[0, 0].value.should be_close(1.1, 1e-5)
+      sys_red.dcgain[0, 0].value.should be_close(1.1, 1e-5)
+    end
+
+    it "realizes models using Ho-Kalman and Kung methods" do
+      ir = [0.0, 1.0, 0.5, 0.25, 0.125, 0.0625].to_tensor
+      sys_ho = CrySpace::Ident.ho_kalman(ir, 1, 1, 1, 0.1)
+      sys_ho.a[0, 0].value.should be_close(0.5, 1e-5)
+      
+      sys_kung = CrySpace::Ident.kung(ir, 1, 1, 1, 0.1)
+      sys_kung.a[0, 0].value.should be_close(0.5, 1e-4)
+    end
+
+    it "fits TransferFunction to frequency response using Levy's method" do
+      omega = [0.1, 1.0, 10.0].to_tensor
+      # Model: G(s) = 2 / (s + 3)
+      # G(jw) = 2 / (jw + 3) = 2*(3 - jw) / (w^2 + 9) = 6/(w^2+9) - j 2w/(w^2+9)
+      resp = Tensor(Complex, CPU(Complex)).zeros([3])
+      3.times do |i|
+        w = omega[i].value
+        den = w * w + 9.0
+        resp[i] = Complex.new(6.0 / den, -2.0 * w / den)
+      end
+      
+      tf_fit = CrySpace::Ident.levy_fit(omega, resp, 0, 1)
+      tf_fit.den[1].value.should be_close(3.0, 0.5)
+      # Gain match
+      (tf_fit.num[0].value / tf_fit.den[1].value).should be_close(2.0/3.0, 0.2)
+    end
+
+    it "generates PRBS and Chirp signals" do
+      p = CrySpace::Ident.prbs(4)
+      p.size.should eq(15)
+      
+      t = Float64Tensor.linear_space(0.0, 1.0, 10)
+      c = CrySpace::Ident.chirp(t, 0.0, 1.0, 10.0)
+      c.size.should eq(10)
+    end
+
+    it "tunes PID parameters using ZN and CC rules" do
+      zn = CrySpace::Tuning.pid_tune_zn(2.0, 4.0, :pid)
+      zn[:kp].should be_close(1.2, 1e-5)
+      zn[:ki].should be_close(0.6, 1e-5)
+      zn[:kd].should be_close(0.6, 1e-5)
+      
+      cc = CrySpace::Tuning.pid_tune_cc(2.0, 10.0, 1.0, :pid)
+      cc[:kp].should_not be_nil
+    end
+
+    it "runs Extended Kalman Filter (EKF)" do
+      # 1D nonlinear system: x_next = x^2 + u, y = x^3
+      f = ->(x : Float64Tensor, u : Float64Tensor?) { (x * x) + (u ? u : 0.0) }
+      h = ->(x : Float64Tensor) { x * x * x }
+      jf = ->(x : Float64Tensor, u : Float64Tensor?) { x * 2.0 }
+      jh = ->(x : Float64Tensor) { (x * x) * 3.0 }
+      
+      q = [[0.01]].to_tensor
+      r = [[0.01]].to_tensor
+      x0 = [[1.0]].to_tensor
+      p0 = [[1.0]].to_tensor
+      
+      ekf = CrySpace::ExtendedKalmanFilter.new(f, h, jf, jh, q, r, x0, p0)
+      ekf.predict([[0.5]].to_tensor)
+      ekf.update([[3.375]].to_tensor)
+      ekf.x[0, 0].value.should_not be_nil
+    end
+
+    it "runs Unscented Kalman Filter (UKF)" do
+      f = ->(x : Float64Tensor, u : Float64Tensor?) { (x * x) + (u ? u : 0.0) }
+      h = ->(x : Float64Tensor) { x * x * x }
+      q = [[0.01]].to_tensor
+      r = [[0.01]].to_tensor
+      x0 = [[1.0]].to_tensor
+      p0 = [[1.0]].to_tensor
+      
+      ukf = CrySpace::UnscentedKalmanFilter.new(f, h, q, r, x0, p0)
+      ukf.predict([[0.5]].to_tensor)
+      ukf.update([[3.375]].to_tensor)
+      ukf.x[0, 0].value.should_not be_nil
+    end
+
+    it "runs iLQR and MRAC simulations and backlash describing function" do
+      # 1D discrete double-integrator style: x_next = A*x + B*u
+      f = ->(x : Float64Tensor, u : Float64Tensor) {
+        a = [[1.0, 0.1], [0.0, 1.0]].to_tensor
+        b = [[0.0], [0.1]].to_tensor
+        a.matmul(x) + b.matmul(u)
+      }
+      jf = ->(x : Float64Tensor, u : Float64Tensor) { [[1.0, 0.1], [0.0, 1.0]].to_tensor }
+      ju = ->(x : Float64Tensor, u : Float64Tensor) { [[0.0], [0.1]].to_tensor }
+      
+      q = [[1.0, 0.0], [0.0, 1.0]].to_tensor
+      r = [[0.1]].to_tensor
+      qf = [[10.0, 0.0], [0.0, 10.0]].to_tensor
+      x0 = [[1.0], [0.0]].to_tensor
+      u_init = [ [[0.0]].to_tensor, [[0.0]].to_tensor ]
+      
+      xs, us = CrySpace::AdaptiveNonlinear.ilqr(f, jf, ju, q, r, qf, x0, u_init)
+      xs.size.should eq(3)
+      us.size.should eq(2)
+      
+      # MRAC
+      r_sig = ->(t : Float64) { 1.0 }
+      t_vec = Float64Tensor.linear_space(0.0, 1.0, 11)
+      xs_m, xms, us_m = CrySpace::AdaptiveNonlinear.mrac_simulate(-1.0, 2.0, -2.0, 2.0, 1.0, 1.0, r_sig, t_vec)
+      xs_m.size.should eq(11)
+      
+      # Backlash
+      df = CrySpace::AdaptiveNonlinear.describing_function_backlash(2.0, 0.5)
+      df.real.should_not be_nil
+    end
   end

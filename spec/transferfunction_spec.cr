@@ -156,4 +156,30 @@ describe CrySpace::TransferFunction do
     w.num[1].value.should be_close(10.0, 1e-5)
     w.den[1].value.should be_close(1.0, 1e-5) # 10 * 0.1
   end
+
+  it "computes Routh-Hurwitz and Jury stability criteria and designs notch filters" do
+    # Stable continuous system: 1 / (s^2 + 3s + 2)
+    sys_c = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, 3.0, 2.0].to_tensor)
+    sys_c.routh_hurwitz[:stable].should be_true
+    
+    # Unstable continuous system: 1 / (s^2 - 3s + 2)
+    sys_unstable_c = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, -3.0, 2.0].to_tensor)
+    sys_unstable_c.routh_hurwitz[:stable].should be_false
+    
+    # Stable discrete system: 1 / (z^2 - 0.5z + 0.06)
+    # Roots: 0.2 and 0.3 (both inside unit circle)
+    sys_d = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, -0.5, 0.06].to_tensor, 0.1)
+    sys_d.jury_test[:stable].should be_true
+    
+    # Unstable discrete system: 1 / (z^2 - 2.5z + 1.0)
+    # Roots: 2.0 and 0.5 (2.0 is outside unit circle)
+    sys_unstable_d = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, -2.5, 1.0].to_tensor, 0.1)
+    sys_unstable_d.jury_test[:stable].should be_false
+    
+    # Notch filter
+    n = CrySpace::TransferFunction.notch(10.0, 0.1)
+    n.num[0].value.should eq(1.0)
+    n.num[2].value.should eq(100.0)
+    n.den[1].value.should be_close(2.0, 1e-5) # 2 * 0.1 * 10 = 2
+  end
 end

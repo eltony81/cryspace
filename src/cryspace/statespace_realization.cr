@@ -579,5 +579,51 @@ module CrySpace
     def fw_balred(orders : Int32) : StateSpace
       balred(orders)
     end
+
+    # Performs Singular Perturbation Model Reduction (Residualization), preserving the DC gain exactly.
+    def residual_reduction(n_slow : Int32) : StateSpace
+      n = n_states
+      raise ArgumentError.new("Reduced order n_slow must be between 1 and #{n-1}") if n_slow < 1 || n_slow >= n
+      
+      n_fast = n - n_slow
+      
+      a11 = Float64Tensor.zeros([n_slow, n_slow])
+      a12 = Float64Tensor.zeros([n_slow, n_fast])
+      a21 = Float64Tensor.zeros([n_fast, n_slow])
+      a22 = Float64Tensor.zeros([n_fast, n_fast])
+      
+      n_slow.times do |r|
+        n_slow.times { |c| a11[r, c] = @a[r, c].value }
+        n_fast.times { |c| a12[r, c] = @a[r, n_slow + c].value }
+      end
+      n_fast.times do |r|
+        n_slow.times { |c| a21[r, c] = @a[n_slow + r, c].value }
+        n_fast.times { |c| a22[r, c] = @a[n_slow + r, n_slow + c].value }
+      end
+      
+      b1 = Float64Tensor.zeros([n_slow, n_inputs])
+      b2 = Float64Tensor.zeros([n_fast, n_inputs])
+      n_slow.times do |r|
+        n_inputs.times { |c| b1[r, c] = @b[r, c].value }
+      end
+      n_fast.times do |r|
+        n_inputs.times { |c| b2[r, c] = @b[n_slow + r, c].value }
+      end
+      
+      c1 = Float64Tensor.zeros([n_outputs, n_slow])
+      c2 = Float64Tensor.zeros([n_outputs, n_fast])
+      n_outputs.times do |r|
+        n_slow.times { |c| c1[r, c] = @c[r, c].value }
+        n_fast.times { |c| c2[r, c] = @c[r, n_slow + c].value }
+      end
+      
+      a22_inv = a22.inv
+      ar = a11 - a12.matmul(a22_inv).matmul(a21)
+      br = b1 - a12.matmul(a22_inv).matmul(b2)
+      cr = c1 - c2.matmul(a22_inv).matmul(a21)
+      dr = @d - c2.matmul(a22_inv).matmul(b2)
+      
+      StateSpace.new(ar, br, cr, dr, @dt)
+    end
   end
 end

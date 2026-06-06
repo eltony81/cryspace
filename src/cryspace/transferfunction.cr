@@ -523,5 +523,112 @@ def to_statespace
     def self.butter_digital(order : Int32, wn : Float64, dt : Float64) : TransferFunction
       butter(order, wn).to_discrete(dt, :tustin)
     end
+
+    # Computes the Routh-Hurwitz stability table for the denominator polynomial of a continuous system.
+    def routh_hurwitz : NamedTuple(stable: Bool, table: Array(Array(Float64)))
+      coeffs = @den.to_a
+      n = coeffs.size - 1
+      raise ArgumentError.new("System denominator must have degree >= 1") if n < 1
+      
+      n_cols = (n + 2) // 2
+      table = Array(Array(Float64)).new(n + 1) { Array(Float64).new(n_cols, 0.0) }
+      
+      n_cols.times do |i|
+        idx = 2 * i
+        table[0][i] = idx < coeffs.size ? coeffs[idx] : 0.0
+      end
+      
+      n_cols.times do |i|
+        idx = 2 * i + 1
+        table[1][i] = idx < coeffs.size ? coeffs[idx] : 0.0
+      end
+      
+      (2..n).each do |r|
+        n_cols.times do |c|
+          val_prev = table[r-1][0]
+          if val_prev.abs < 1e-12
+            val_prev = 1e-12
+          end
+          
+          term1 = val_prev * (c + 1 < n_cols ? table[r-2][c+1] : 0.0)
+          term2 = table[r-2][0] * (c + 1 < n_cols ? table[r-1][c+1] : 0.0)
+          table[r][c] = (term1 - term2) / val_prev
+        end
+      end
+      
+      sign = table[0][0] <=> 0.0
+      stable = true
+      (0..n).each do |r|
+        if (table[r][0] <=> 0.0) != sign || table[r][0].abs < 1e-9
+          stable = false
+        end
+      end
+      
+      {stable: stable, table: table}
+    end
+
+    # Computes the Jury stability table for discrete systems.
+    def jury_test : NamedTuple(stable: Bool, table: Array(Array(Float64)))
+      coeffs = @den.to_a
+      n = coeffs.size - 1
+      raise ArgumentError.new("System denominator must have degree >= 1") if n < 1
+      
+      rows = Array(Array(Float64)).new
+      rows << coeffs.dup
+      rows << coeffs.reverse
+      
+      (1..n-1).each do |k|
+        prev_row = rows[rows.size - 2]
+        
+        len = n - k + 1
+        next_row = Array(Float64).new(len, 0.0)
+        
+        a0 = prev_row[0]
+        an = prev_row[prev_row.size - 1]
+        
+        len.times do |i|
+          next_row[i] = a0 * prev_row[i] - an * prev_row[prev_row.size - 1 - i]
+        end
+        
+        rows << next_row.dup
+        rows << next_row.reverse
+      end
+      
+      stable = true
+      p_1 = 0.0
+      p_minus_1 = 0.0
+      coeffs.each_with_index do |c, idx|
+        p_1 += c
+        p_minus_1 += c * (idx.even? ? 1.0 : -1.0)
+      end
+      
+      if p_1 <= 0.0
+        stable = false
+      end
+      
+      if ((-1.0)**n * p_minus_1) <= 0.0
+        stable = false
+      end
+      
+      (0..n-2).each do |k|
+        row_idx = 2 * k
+        row = rows[row_idx]
+        if row[0].abs <= row[row.size - 1].abs
+          stable = false
+        end
+      end
+      
+      {stable: stable, table: rows}
+    end
+
+    # Designs a continuous-time notch filter G(s) = (s^2 + w0^2) / (s^2 + 2*zeta*w0*s + w0^2).
+    def self.notch(w0 : Float64, zeta : Float64) : TransferFunction
+      raise ArgumentError.new("Center frequency w0 must be positive") if w0 <= 0.0
+      raise ArgumentError.new("Damping ratio zeta must be positive") if zeta <= 0.0
+      
+      num = [1.0, 0.0, w0 * w0].to_tensor
+      den = [1.0, 2.0 * zeta * w0, w0 * w0].to_tensor
+      TransferFunction.new(num, den)
+    end
   end
 end

@@ -527,5 +527,159 @@ module CrySpace
 
       Math.sqrt(trace_val)
     end
+
+    private def complex_inv(matrix : Tensor(Complex, CPU(Complex))) : Tensor(Complex, CPU(Complex))
+      n = matrix.shape[0]
+      aug = Tensor(Complex, CPU(Complex)).zeros([n, 2 * n])
+      n.times do |i|
+        n.times do |j|
+          aug[i, j] = matrix[i, j].value
+        end
+        aug[i, n + i] = Complex.new(1.0, 0.0)
+      end
+      
+      n.times do |i|
+        pivot_row = i
+        pivot_val = aug[i, i].value.abs
+        (i+1...n).each do |r|
+          val = aug[r, i].value.abs
+          if val > pivot_val
+            pivot_val = val
+            pivot_row = r
+          end
+        end
+        
+        if pivot_row != i
+          n_cols = 2 * n
+          n_cols.times do |c|
+            temp = aug[i, c].value
+            aug[i, c] = aug[pivot_row, c].value
+            aug[pivot_row, c] = temp
+          end
+        end
+        
+        pivot = aug[i, i].value
+        if pivot.abs < 1e-12
+          raise ArgumentError.new("Matrix is singular and cannot be inverted")
+        end
+        
+        (2 * n).times do |c|
+          aug[i, c] = aug[i, c].value / pivot
+        end
+        
+        n.times do |r|
+          next if r == i
+          factor = aug[r, i].value
+          (2 * n).times do |c|
+            aug[r, c] = aug[r, c].value - factor * aug[i, c].value
+          end
+        end
+      end
+      
+      inv = Tensor(Complex, CPU(Complex)).zeros([n, n])
+      n.times do |i|
+        n.times do |j|
+          inv[i, j] = aug[i, n + j].value
+        end
+      end
+      inv
+    end
+
+    # Computes the Relative Gain Array (RGA) matrix at frequency omega.
+    def rga(omega : Float64) : Float64Tensor
+      raise ArgumentError.new("RGA only defined for square MIMO systems") if n_inputs != n_outputs
+      n = n_inputs
+      
+      w_tensor = [omega].to_tensor
+      resp = freqresp(w_tensor)
+      
+      g_jw = Tensor(Complex, CPU(Complex)).zeros([n, n])
+      n.times do |i|
+        n.times do |j|
+          g_jw[i, j] = resp[i, j, 0].value
+        end
+      end
+      
+      g_inv = complex_inv(g_jw)
+      
+      rga_mat = Float64Tensor.zeros([n, n])
+      n.times do |i|
+        n.times do |j|
+          val = g_jw[i, j].value * g_inv[j, i].value
+          rga_mat[i, j] = val.real
+        end
+      end
+      rga_mat
+    end
+
+    # Computes the exact peak gain (H-infinity norm) of a continuous-time system.
+    def hinfnorm_exact(tol = 1e-5) : Float64
+      dt = @dt
+      if dt && dt > 0.0
+        raise ArgumentError.new("Exact H-infinity norm only supported for continuous-time systems")
+      end
+      
+      d_sv = @d.svd[1][0].value
+      gamma_low = d_sv
+      gamma_high = gamma_low + 1.0
+      n = n_states
+      
+      has_imag_eig = ->(g : Float64) {
+        r_mat = Float64Tensor.identity(n_inputs) * (g * g) - @d.transpose.matmul(@d)
+        
+        _, s_r, _ = r_mat.svd
+        if s_r[0].value.abs < 1e-9
+          return true
+        end
+        r_inv = r_mat.inv
+        
+        term_a = @a + @b.matmul(r_inv).matmul(@d.transpose).matmul(@c)
+        term_b = @b.matmul(r_inv).matmul(@b.transpose)
+        
+        eye_y = Float64Tensor.identity(n_outputs)
+        d_r_dt = @d.matmul(r_inv).matmul(@d.transpose)
+        term_c = @c.transpose.matmul(eye_y + d_r_dt).matmul(@c)
+        
+        h = Float64Tensor.zeros([2 * n, 2 * n])
+        n.times do |i|
+          n.times do |j|
+            h[i, j] = term_a[i, j].value
+            h[i, n + j] = term_b[i, j].value
+            h[n + i, j] = -term_c[i, j].value
+            h[n + i, n + j] = -term_a[j, i].value
+          end
+        end
+        
+        w_eig, _ = h.eig_c
+        
+        any_imag = false
+        w_eig.size.times do |i|
+          if w_eig.to_unsafe[i].real.abs < 1e-9 && w_eig.to_unsafe[i].imag.abs > 1e-9
+            any_imag = true
+            break
+          end
+        end
+        any_imag
+      }
+      
+      10.times do
+        if has_imag_eig.call(gamma_high)
+          gamma_high *= 2.0
+        else
+          break
+        end
+      end
+      
+      while (gamma_high - gamma_low) > tol
+        gamma = (gamma_low + gamma_high) / 2.0
+        if has_imag_eig.call(gamma)
+          gamma_low = gamma
+        else
+          gamma_high = gamma
+        end
+      end
+      
+      gamma_high
+    end
   end
 end

@@ -51,7 +51,17 @@
   - Loop shaping weight generator (`makeweight`) for robust $H_\infty$ filters.
   - Least Squares System Identification (`least_squares_estimation`) for TF parameters.
   - Eigenvalue Realization Algorithm (`era`) for realization from impulse response data.
-  - Describing Functions (`describing_function_saturation`, `describing_function_deadzone`) for nonlinear analysis.
+  - Describing Functions (`describing_function_saturation`, `describing_function_deadzone`, `describing_function_backlash`) for nonlinear stability analysis.
+  - Stability Tests: Routh-Hurwitz (`routh_hurwitz`) and Jury (`jury_test`).
+  - MIMO Analysis: Relative Gain Array (`rga`) and Exact H-infinity Norm (`hinfnorm_exact`).
+  - Pre-Warped Discretization (`sample(method: :prewarped)`) and Model Residualization (`residual_reduction`).
+  - Realization & Fitting: Ho-Kalman (`ho_kalman`), Kung (`kung`), and Levy's Frequency Fitting (`levy_fit`).
+  - Identification Signals: PRBS (`prbs`) and Chirp (`chirp`) swept generators.
+  - Notch Filter (`notch`) design.
+  - PID Tuning: Ziegler-Nichols closed-loop (`pid_tune_zn`) and Cohen-Coon (`pid_tune_cc`).
+  - Non-linear Estimators: Extended Kalman Filter (`ExtendedKalmanFilter`) and Unscented Kalman Filter (`UnscentedKalmanFilter`).
+  - Trajectory Optimization: Iterative LQR (`ilqr`) solver.
+  - Adaptive Control: Model Reference Adaptive Control (`mrac_simulate`).
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -916,6 +926,147 @@ sat_gain = CrySpace::Nonlinear.describing_function_saturation(2.0, 1.0)
 
 # Deadzone describing function for amplitude 1.0, half-width 0.5
 dead_gain = CrySpace::Nonlinear.describing_function_deadzone(1.0, 0.5)
+```
+
+#### JJJ. Routh-Hurwitz Stability Criterion (`routh_hurwitz`)
+Computes the Routh array and determines continuous-time stability:
+```crystal
+# Check continuous stability
+res = tf.routh_hurwitz
+stable = res[:stable]
+routh_table = res[:table]
+```
+
+#### KKK. Jury Stability Criterion (`jury_test`)
+Computes the Jury table and determines discrete-time stability:
+```crystal
+# Check discrete stability
+res = tf_discrete.jury_test
+stable = res[:stable]
+jury_table = res[:table]
+```
+
+#### LLL. Relative Gain Array (`rga`)
+Computes the RGA matrix at frequency $\omega$ for square MIMO systems:
+```crystal
+# RGA at DC
+rga_dc = sys_mimo.rga(0.0)
+```
+
+#### MMM. Bilinear Discretization with Frequency Pre-Warping (`method: :prewarped`)
+Discretizes a system while preserving matching response at pre-warped frequency $\omega_c$:
+```crystal
+# Bilinear pre-warping discretization at omega_c = 5.0
+sys_d = sys.sample(dt: 0.1, method: :prewarped, omega_c: 5.0)
+```
+
+#### NNN. Ho-Kalman Realization (`ho_kalman`)
+Constructs a minimal realization from discrete impulse response data:
+```crystal
+# Ho-Kalman state-space realization
+sys = CrySpace::Ident.ho_kalman(impulse_resp, n_states, m_inputs, n_outputs, dt)
+```
+
+#### OOO. Kung's Realization Algorithm (`kung`)
+Direct state-space realization from impulse response data using Hankel SVD:
+```crystal
+# Kung's state-space realization
+sys = CrySpace::Ident.kung(impulse_resp, n_states, m_inputs, n_outputs, dt)
+```
+
+#### PPP. Levy's Frequency-Domain Fitting (`levy_fit`)
+Fits transfer function parameters to measured complex frequency response data:
+```crystal
+# Fit TF with 0 zeros and 1 pole to frequency data
+tf_fit = CrySpace::Ident.levy_fit(omega_points, complex_resp, 0, 1)
+```
+
+#### QQQ. PRBS Generator (`prbs`)
+Generates a Pseudo-Random Binary Sequence (LFSR) of maximum-length:
+```crystal
+# Generate PRBS signal of order 4
+prbs_signal = CrySpace::Ident.prbs(4)
+```
+
+#### RRR. Chirp Signal Generator (`chirp`)
+Generates a swept-frequency cosine signal:
+```crystal
+# Swept cosine from f0=0 to f1=10 over time vector t
+chirp_signal = CrySpace::Ident.chirp(t, 0.0, 1.0, 10.0)
+```
+
+#### SSS. Notch Filter Design (`notch`)
+Designs a continuous-time notch filter rejecting a specific center frequency:
+```crystal
+# Notch filter at w0=10.0 rad/s and zeta=0.1
+notch_filter = CrySpace::TransferFunction.notch(10.0, 0.1)
+```
+
+#### TTT. Ziegler-Nichols Closed-Loop Tuning (`pid_tune_zn`)
+Tunes PID parameters based on ultimate gain $K_u$ and ultimate period $T_u$:
+```crystal
+# ZN Closed-loop gains
+gains = CrySpace::Tuning.pid_tune_zn(ku: 2.5, tu: 3.0, type: :pid)
+```
+
+#### UUU. Cohen-Coon Tuning (`pid_tune_cc`)
+Tunes PID parameters based on FOPDT model parameters:
+```crystal
+# Cohen-Coon gains
+gains = CrySpace::Tuning.pid_tune_cc(gp: 2.0, tau: 10.0, theta: 1.5, type: :pid)
+```
+
+#### VVV. Exact H-infinity Norm Solver (`hinfnorm_exact`)
+Computes the exact peak gain of a continuous system using the Hamiltonian matrix method:
+```crystal
+# Exact H-infinity norm
+h_inf = sys.hinfnorm_exact
+```
+
+#### WWW. Model Residualization / Singular Perturbation Reduction (`residual_reduction`)
+Reduces model order while preserving the DC gain exactly:
+```crystal
+# Reduce order to 1 state (residualization)
+sys_reduced = sys.residual_reduction(1)
+```
+
+#### XXX. Extended Kalman Filter (`ExtendedKalmanFilter`)
+Recursive estimator for nonlinear systems using Jacobians:
+```crystal
+# Initialize and step EKF
+ekf = CrySpace::ExtendedKalmanFilter.new(f, h, jf, jh, q, r, x0, p0)
+ekf.predict(u)
+ekf.update(y)
+```
+
+#### YYY. Unscented Kalman Filter (`UnscentedKalmanFilter`)
+Nonlinear estimator propagating sigma points through nonlinear dynamics:
+```crystal
+# Initialize and step UKF
+ukf = CrySpace::UnscentedKalmanFilter.new(f, h, q, r, x0, p0)
+ukf.predict(u)
+ukf.update(y)
+```
+
+#### ZZZ. Iterative LQR Trajectory Optimization (`ilqr`)
+Performs trajectory optimization for nonlinear systems:
+```crystal
+# Run iLQR
+xs, us = CrySpace::AdaptiveNonlinear.ilqr(f, jf, ju, q, r, qf, x0, u_init)
+```
+
+#### AAAA. Model Reference Adaptive Control (`mrac_simulate`)
+Simulates Lyapunov-based adaptive control loops tracking a reference model:
+```crystal
+# Run MRAC simulation
+xs, xms, us = CrySpace::AdaptiveNonlinear.mrac_simulate(a_plant, b_plant, a_model, b_model, gamma_x, gamma_r, r_sig, t_vec)
+```
+
+#### BBBB. Backlash Describing Function (`describing_function_backlash`)
+Computes complex gain describing function for mechanical gear play/backlash:
+```crystal
+# Complex describing function gain for amplitude 2.0, backlash width 0.5
+df_gain = CrySpace::AdaptiveNonlinear.describing_function_backlash(2.0, 0.5)
 ```
 
 ## Testing

@@ -2,7 +2,7 @@ require "num"
 
 module CrySpace
   class StateSpace
-    def sample(dt : Float64, method : Symbol = :zoh, alpha : Float64 = 0.5)
+    def sample(dt : Float64, method : Symbol = :zoh, alpha : Float64 = 0.5, omega_c : Float64? = nil)
       curr_dt = @dt
       if curr_dt && curr_dt > 0
         raise "System is already discrete"
@@ -43,10 +43,24 @@ module CrySpace
         dd = @d + @c.matmul(m).matmul(@b) * (gbt_alpha * dt)
         
         StateSpace.new(ad, bd, cd, dd, dt)
+      elsif method == :prewarped
+        w_c = omega_c || 1.0
+        k_factor = w_c / Math.tan(w_c * dt / 2.0)
+        dt_eff = 2.0 / k_factor
+        
+        n = n_states
+        identity_n = Float64Tensor.identity(n)
+        m = (identity_n - @a * (0.5 * dt_eff)).inv
+        ad = m.matmul(identity_n + @a * (0.5 * dt_eff))
+        bd = m.matmul(@b) * dt_eff
+        cd = @c.matmul(m)
+        dd = @d + @c.matmul(m).matmul(@b) * (0.5 * dt_eff)
+        
+        StateSpace.new(ad, bd, cd, dd, dt)
       elsif method == :matched
         to_transferfunction.to_discrete(dt, :matched).to_statespace
       else
-        raise ArgumentError.new("Discretization method must be :zoh, :gbt, :bilinear, :tustin, or :matched")
+        raise ArgumentError.new("Discretization method must be :zoh, :gbt, :bilinear, :tustin, :prewarped, or :matched")
       end
     end
 

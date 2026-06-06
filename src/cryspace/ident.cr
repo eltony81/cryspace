@@ -46,7 +46,7 @@ module CrySpace
       TransferFunction.new(num_d.to_tensor, den_d.to_tensor, dt)
     end
 
-    # Realizes a discrete StateSpace model from discrete impulse response data.
+    # Realizes a discrete StateSpace model from discrete impulse response data using ERA.
     def self.era(impulse_response : Float64Tensor, n_states : Int32, m_inputs : Int32, n_outputs : Int32, dt : Float64) : StateSpace
       y = if impulse_response.shape.size == 1
             impulse_response.reshape([impulse_response.shape[0], 1, 1])
@@ -133,6 +133,226 @@ module CrySpace
       end
       
       StateSpace.new(ad, bd, cd, dd, dt)
+    end
+
+    # Realizes a discrete StateSpace model from discrete impulse response data using Ho-Kalman.
+    def self.ho_kalman(impulse_response : Float64Tensor, n_states : Int32, m_inputs : Int32, n_outputs : Int32, dt : Float64) : StateSpace
+      era(impulse_response, n_states, m_inputs, n_outputs, dt)
+    end
+
+    # Realizes a discrete StateSpace model using Kung's realization algorithm.
+    def self.kung(impulse_response : Float64Tensor, n_states : Int32, m_inputs : Int32, n_outputs : Int32, dt : Float64) : StateSpace
+      y = if impulse_response.shape.size == 1
+            impulse_response.reshape([impulse_response.shape[0], 1, 1])
+          elsif impulse_response.shape.size == 2
+            impulse_response.reshape([impulse_response.shape[0], impulse_response.shape[1], 1])
+          else
+            impulse_response
+          end
+      
+      n_samples = y.shape[0]
+      p = n_outputs
+      m = m_inputs
+      nx = n_states
+      
+      r = (n_samples - 2) // 2
+      c = r
+      
+      h0 = Float64Tensor.zeros([r * p, c * m])
+      r.times do |i|
+        c.times do |j|
+          y0_block = y[i + j + 1]
+          p.times do |pr|
+            m.times do |mc|
+              h0[i * p + pr, j * m + mc] = y0_block[pr, mc].value
+            end
+          end
+        end
+      end
+      
+      u, s, vt = h0.svd
+      
+      s_n_sqrt = Float64Tensor.zeros([nx, nx])
+      nx.times do |i|
+        val = s[i].value
+        s_n_sqrt[i, i] = Math.sqrt([val, 1e-12].max)
+      end
+      
+      u_n = Float64Tensor.zeros([r * p, nx])
+      (r * p).times do |i|
+        nx.times do |j|
+          u_n[i, j] = u[i, j].value
+        end
+      end
+      
+      obs = u_n.matmul(s_n_sqrt)
+      
+      obs1 = Float64Tensor.zeros([(r - 1) * p, nx])
+      obs2 = Float64Tensor.zeros([(r - 1) * p, nx])
+      ((r - 1) * p).times do |i|
+        nx.times do |j|
+          obs1[i, j] = obs[i, j].value
+          obs2[i, j] = obs[p + i, j].value
+        end
+      end
+      
+      obs1_t = obs1.transpose
+      ad = (obs1_t.matmul(obs1)).inv.matmul(obs1_t).matmul(obs2)
+      
+      cd = Float64Tensor.zeros([p, nx])
+      p.times do |i|
+        nx.times do |j|
+          cd[i, j] = obs[i, j].value
+        end
+      end
+      
+      v_n_t = Float64Tensor.zeros([nx, c * m])
+      nx.times do |i|
+        (c * m).times do |j|
+          v_n_t[i, j] = vt[i, j].value
+        end
+      end
+      bd_all = s_n_sqrt.matmul(v_n_t)
+      bd = Float64Tensor.zeros([nx, m])
+      nx.times do |i|
+        m.times do |j|
+          bd[i, j] = bd_all[i, j].value
+        end
+      end
+      
+      dd = Float64Tensor.zeros([p, m])
+      p.times do |pr|
+        m.times do |mc|
+          dd[pr, mc] = y[0][pr, mc].value
+        end
+      end
+      
+      StateSpace.new(ad, bd, cd, dd, dt)
+    end
+
+    # Fits a transfer function coefficients directly to frequency response data.
+    def self.levy_fit(omega : Float64Tensor, resp : Tensor(Complex, CPU(Complex)), m_num : Int32, n_den : Int32) : TransferFunction
+      n_freqs = omega.size
+      n_vars = m_num + 1 + n_den
+      
+      phi = Float64Tensor.zeros([2 * n_freqs, n_vars])
+      y_vec = Float64Tensor.zeros([2 * n_freqs, 1])
+      
+      n_freqs.times do |i|
+        w = omega[i].value
+        r = resp[i].value.real
+        img = resp[i].value.imag
+        
+        (m_num + 1).times do |k|
+          if k % 4 == 0
+            phi[2 * i, k] = w ** k
+          elsif k % 4 == 2
+            phi[2 * i, k] = -(w ** k)
+          else
+            phi[2 * i, k] = 0.0
+          end
+        end
+        n_den.times do |k|
+          pow = k + 1
+          if pow % 4 == 1
+            phi[2 * i, m_num + 1 + k] = (w ** pow) * img
+          elsif pow % 4 == 2
+            phi[2 * i, m_num + 1 + k] = (w ** pow) * r
+          elsif pow % 4 == 3
+            phi[2 * i, m_num + 1 + k] = -(w ** pow) * img
+          else
+            phi[2 * i, m_num + 1 + k] = -(w ** pow) * r
+          end
+        end
+        y_vec[2 * i, 0] = r
+        
+        (m_num + 1).times do |k|
+          if k % 4 == 1
+            phi[2 * i + 1, k] = w ** k
+          elsif k % 4 == 3
+            phi[2 * i + 1, k] = -(w ** k)
+          else
+            phi[2 * i + 1, k] = 0.0
+          end
+        end
+        n_den.times do |k|
+          pow = k + 1
+          if pow % 4 == 1
+            phi[2 * i + 1, m_num + 1 + k] = -(w ** pow) * r
+          elsif pow % 4 == 2
+            phi[2 * i + 1, m_num + 1 + k] = (w ** pow) * img
+          elsif pow % 4 == 3
+            phi[2 * i + 1, m_num + 1 + k] = (w ** pow) * r
+          else
+            phi[2 * i + 1, m_num + 1 + k] = -(w ** pow) * img
+          end
+        end
+        y_vec[2 * i + 1, 0] = img
+      end
+      
+      phi_t = phi.transpose
+      lhs = phi_t.matmul(phi)
+      rhs = phi_t.matmul(y_vec)
+      
+      theta = lhs.solve(rhs)
+      
+      num_arr = Array(Float64).new(m_num + 1, 0.0)
+      (m_num + 1).times do |k|
+        num_arr[m_num - k] = theta[k, 0].value
+      end
+      
+      den_arr = Array(Float64).new(n_den + 1, 0.0)
+      den_arr[n_den] = 1.0
+      n_den.times do |k|
+        den_arr[n_den - 1 - k] = theta[m_num + 1 + k, 0].value
+      end
+      
+      TransferFunction.new(num_arr.to_tensor, den_arr.to_tensor)
+    end
+
+    # Generates a Pseudo-Random Binary Sequence (PRBS) using LFSR.
+    def self.prbs(order : Int32, seed : UInt32 = 1) : Float64Tensor
+      taps = {
+        2 => [2, 1],
+        3 => [3, 2],
+        4 => [4, 3],
+        5 => [5, 3],
+        6 => [6, 5],
+        7 => [7, 6],
+        8 => [8, 6, 5, 4],
+        9 => [9, 5],
+        10 => [10, 7]
+      }
+      
+      tap_list = taps[order]? || [order, order - 1]
+      
+      len = (1 << order) - 1
+      res = Float64Tensor.zeros([len])
+      reg = seed == 0 ? 1_u32 : seed
+      
+      len.times do |i|
+        output_bit = reg & 1
+        res[i] = output_bit == 1 ? 1.0 : -1.0
+        
+        feedback = 0_u32
+        tap_list.each do |t|
+          feedback ^= (reg >> (order - t)) & 1
+        end
+        reg = (reg >> 1) | (feedback << (order - 1))
+      end
+      res
+    end
+
+    # Generates a swept-frequency cosine (chirp) signal.
+    def self.chirp(t : Float64Tensor, f0 : Float64, t1 : Float64, f1 : Float64) : Float64Tensor
+      beta = (f1 - f0) / (2.0 * t1)
+      res = Float64Tensor.zeros(t.shape)
+      t.size.times do |i|
+        t_val = t[i].value
+        phase = 2.0 * Math::PI * (f0 * t_val + beta * t_val * t_val)
+        res[i] = Math.cos(phase)
+      end
+      res
     end
   end
 end
