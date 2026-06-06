@@ -2,9 +2,27 @@
 
 ![Version](https://img.shields.io/badge/version-1.19.0-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
+
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
 
-> 🚗 **New in v1.19.0 —** A full end-to-end storyboard tutorial: [examples/STORY.md](examples/STORY.md) · [▶ View Interactive HTML](https://htmlpreview.github.io/?https://github.com/eltony81/cryspace/blob/main/examples/suspension_storyboard.html) · [Crystal source](examples/36_mega_usecase_storyboard.cr)
+---
+
+## 🚗 Featured: Active Suspension Control — End-to-End Storyboard
+
+> A complete control engineering journey — from first-principles physics modelling to closed-loop simulation — told as a story, chapter by chapter.
+
+**[▶ Open Interactive HTML Storyboard](https://htmlpreview.github.io/?https://github.com/eltony81/cryspace/blob/main/examples/suspension_storyboard.html)**
+> Live Bode plots · MathJax equations · Syntax-highlighted Crystal code · Dark-mode UI
+
+| Resource | Link |
+|----------|------|
+| 📖 Narrative README | [examples/STORY.md](examples/STORY.md) |
+| 🌐 Interactive HTML (rendered) | [suspension_storyboard.html via htmlpreview](https://htmlpreview.github.io/?https://github.com/eltony81/cryspace/blob/main/examples/suspension_storyboard.html) |
+| 💎 Crystal source | [examples/36_mega_usecase_storyboard.cr](examples/36_mega_usecase_storyboard.cr) |
+
+The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling → stability → frequency analysis → LQR → observers → discretization → model reduction → PID → nonlinear analysis → system identification → ODE solvers → closed-loop simulation → plotting.
+
+---
 
 ## Features
 
