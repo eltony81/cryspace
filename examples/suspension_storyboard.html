@@ -6,14 +6,23 @@
   <title>CrySpace · Active Suspension Control Design Storyboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script>
-    MathJax = {
-      tex: { inlineMath: [['$','$']], displayMath: [['\\[','\\]']] },
-      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
-    };
-  </script>
-  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style id="eq-style">
+    .eq { font-family: 'Georgia', serif; display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:6px; padding:18px 12px; background:rgba(255,255,255,0.02); border-radius:10px; margin:20px 0; font-size:1.05rem; color:#e2e8f0; overflow-x:auto; }
+    .eq .bk { display:inline-flex; flex-direction:column; align-items:center; gap:2px; }
+    .eq .bk-inner { display:grid; gap:4px 14px; border-left:2px solid #64748b; border-right:2px solid #64748b; padding:6px 10px; }
+    .eq sub, .eq sup { font-size:0.65em; }
+    .eq .dot { position:relative; display:inline-block; }
+    .eq .dot::before { content:'·'; position:absolute; top:-0.55em; left:50%; transform:translateX(-50%); font-size:1.1em; }
+    .eq .op { color:#94a3b8; margin:0 4px; }
+    .eq .sym { color:#38bdf8; font-style:italic; }
+    .eq .bold { font-weight:700; color:#f472b6; font-style:italic; }
+    .eq .int-sym { font-size:2rem; line-height:1; }
+    .eq .frac { display:inline-flex; flex-direction:column; align-items:center; vertical-align:middle; }
+    .eq .frac-num { border-bottom:1px solid #64748b; padding-bottom:2px; }
+    .eq .frac-den { padding-top:2px; }
+    .eq .label { font-size:0.8rem; color:#64748b; margin-left:12px; }
+  </style>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -370,7 +379,36 @@
         <div class="card">
           <h3>State Variables</h3>
           <p style="font-size:0.88rem;color:var(--muted)">x₁ = position (m), x₂ = velocity (m/s)</p>
-          <div class="equation">\[ \begin{bmatrix}\dot{x}_1\\\dot{x}_2\end{bmatrix} = \begin{bmatrix}0&1\\-k/M&-b/M\end{bmatrix}\begin{bmatrix}x_1\\x_2\end{bmatrix} + \begin{bmatrix}0\\1/M\end{bmatrix}u \]</div>
+          <!-- State equation: ẋ = Ax + Bu -->
+          <div class="eq">
+            <div class="bk">
+              <div class="bk-inner" style="grid-template-columns:1fr;">
+                <span><span class="dot">x&#775;</span><sub>1</sub></span>
+                <span><span class="dot">x&#775;</span><sub>2</sub></span>
+              </div>
+            </div>
+            <span class="op">=</span>
+            <div class="bk">
+              <div class="bk-inner" style="grid-template-columns:1fr 1fr;">
+                <span>0</span><span>1</span>
+                <span>−k/M</span><span>−b/M</span>
+              </div>
+            </div>
+            <div class="bk">
+              <div class="bk-inner" style="grid-template-columns:1fr;">
+                <span class="sym">x</span><sub>1</sub>
+                <span class="sym">x</span><sub>2</sub>
+              </div>
+            </div>
+            <span class="op">+</span>
+            <div class="bk">
+              <div class="bk-inner" style="grid-template-columns:1fr;">
+                <span>0</span>
+                <span>1/M</span>
+              </div>
+            </div>
+            <span class="sym">u</span>
+          </div>
         </div>
       </div>
     </div>
@@ -443,8 +481,16 @@ plant.<span class="fn">is_observable?</span>     <span class="cmt"># → true</s
       <div>
         <div class="card">
           <h3>Jordan (Modal) Form A</h3>
-          <div class="equation" style="font-size:0.9rem;">
-            \[ A_J = \begin{bmatrix}-0.25 & +1.392\\-1.392 & -0.25\end{bmatrix} \]
+          <!-- Jordan form matrix -->
+          <div class="eq" style="font-size:0.95rem;">
+            <span><span class="sym">A</span><sub>J</sub></span>
+            <span class="op">=</span>
+            <div class="bk">
+              <div class="bk-inner" style="grid-template-columns:1fr 1fr; font-family:'JetBrains Mono',monospace; font-size:0.9rem;">
+                <span>−0.25</span><span style="color:#34d399">+1.392</span>
+                <span style="color:#f472b6">−1.392</span><span>−0.25</span>
+              </div>
+            </div>
           </div>
           <p style="font-size:0.83rem;color:var(--muted)">Complex conjugate eigenvalues reveal a lightly-damped oscillatory mode — the chassis bounce frequency at ≈ 1.39 rad/s.</p>
         </div>
@@ -549,8 +595,30 @@ plant.<span class="fn">is_observable?</span>     <span class="cmt"># → true</s
       The LQR cost function encodes this trade-off. The Riccati solution gives the optimal gain matrix K."
     </p>
 
-    <div class="equation">
-      \[ \min_u \int_0^\infty \left( \mathbf{x}^T Q \mathbf{x} + u^T R u \right) dt \quad\text{s.t.}\quad \dot{\mathbf{x}} = A\mathbf{x}+Bu \]
+    <!-- LQR cost functional -->
+    <div class="eq" style="flex-wrap:wrap; gap:8px;">
+      <span style="font-size:1.1rem;">min</span>
+      <sub style="font-size:0.75rem; color:#64748b;"><span class="sym">u</span></sub>
+      <span class="int-sym">∫</span>
+      <div style="display:inline-flex;flex-direction:column;font-size:0.7rem;color:#64748b;margin-left:-6px;">
+        <span>∞</span><span style="margin-top:18px;">0</span>
+      </div>
+      <span style="font-size:1.05rem;">&#40;</span>
+      <span class="bold">x</span><sup>T</sup>
+      <span class="sym" style="color:#fbbf24;"> Q </span>
+      <span class="bold">x</span>
+      <span class="op">+</span>
+      <span class="sym">u</span><sup>T</sup>
+      <span class="sym" style="color:#fbbf24;"> R </span>
+      <span class="sym">u</span>
+      <span style="font-size:1.05rem;">&#41;</span>
+      <span class="sym"> dt</span>
+      <span class="op" style="margin:0 12px;">s.t.</span>
+      <span class="dot bold">ẋ</span>
+      <span class="op">=</span>
+      <span class="sym"> A</span><span class="bold">x</span>
+      <span class="op">+</span>
+      <span class="sym">Bu</span>
     </div>
 
     <div class="code-block">
