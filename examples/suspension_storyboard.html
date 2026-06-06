@@ -6,8 +6,14 @@
   <title>CrySpace · Active Suspension Control Design Storyboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <script>
+    MathJax = {
+      tex: { inlineMath: [['$','$']], displayMath: [['\\[','\\]']] },
+      options: { skipHtmlTags: ['script','noscript','style','textarea','pre'] }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1096,142 +1102,141 @@ plant_tf.<span class="fn">bode_plot</span>(<span class="str">"tf_bode.html"</spa
 </footer>
 
 <script>
-// ─── Chart defaults ───────────────────────────────────────────────
-const GRID = 'rgba(30,58,95,0.8)';
-const TICK = '#64748b';
-const base = {
-  responsive: true,
-  plugins: { legend: { labels: { color: '#e2e8f0', font: { family: 'Inter' } } } },
-  scales: {
-    x: { grid: { color: GRID }, ticks: { color: TICK } },
-    y: { grid: { color: GRID }, ticks: { color: TICK } }
+document.addEventListener('DOMContentLoaded', function () {
+  const GRID = 'rgba(30,58,95,0.8)';
+  const TICK = '#64748b';
+
+  function mkScales(xLabel, yLabel, xLog) {
+    return {
+      x: {
+        type: xLog ? 'logarithmic' : 'linear',
+        grid: { color: GRID },
+        ticks: { color: TICK, maxTicksLimit: 8 },
+        title: { display: !!xLabel, text: xLabel || '', color: TICK }
+      },
+      y: {
+        grid: { color: GRID },
+        ticks: { color: TICK },
+        title: { display: !!yLabel, text: yLabel || '', color: TICK }
+      }
+    };
   }
-};
 
-// ─── Bode magnitude ───────────────────────────────────────────────
-// G(jw) = 1 / (-w^2 + 0.5j*w + 2)
-function bodeMag(w) {
-  const re = 2 - w*w, im = 0.5*w;
-  const mag = 1 / Math.sqrt(re*re + im*im);
-  return 20 * Math.log10(mag);
-}
-function bodePhase(w) {
-  const re = 2 - w*w, im = 0.5*w;
-  return -Math.atan2(im, re) * 180 / Math.PI;
-}
-const ws = Array.from({length: 200}, (_,i) => 0.05 * Math.pow(10, i*3/199));
-new Chart(document.getElementById('bodeChart'), {
-  type: 'line',
-  data: { datasets: [{ label: 'Magnitude (dB)', data: ws.map(w => ({x:w, y:bodeMag(w)})),
-    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.07)',
-    borderWidth: 2, pointRadius: 0, fill: true, tension: 0.1 }] },
-  options: { ...base, scales: {
-    x: { type: 'logarithmic', grid: {color:GRID}, ticks: {color:TICK},
-         title: {display:true, text:'Frequency (rad/s)', color:TICK} },
-    y: { grid: {color:GRID}, ticks: {color:TICK},
-         title: {display:true, text:'Magnitude (dB)', color:TICK} }
-  }}
-});
-new Chart(document.getElementById('phaseChart'), {
-  type: 'line',
-  data: { datasets: [{ label: 'Phase (°)', data: ws.map(w => ({x:w, y:bodePhase(w)})),
-    borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.07)',
-    borderWidth: 2, pointRadius: 0, fill: true, tension: 0.1 }] },
-  options: { ...base, scales: {
-    x: { type: 'logarithmic', grid: {color:GRID}, ticks: {color:TICK},
-         title: {display:true, text:'Frequency (rad/s)', color:TICK} },
-    y: { grid: {color:GRID}, ticks: {color:TICK},
-         title: {display:true, text:'Phase (°)', color:TICK} }
-  }}
-});
+  const baseOpts = (xLabel, yLabel, xLog, extra) => ({
+    responsive: true,
+    animation: false,
+    plugins: {
+      legend: { labels: { color: '#e2e8f0', font: { family: 'Inter', size: 12 } } }
+    },
+    scales: mkScales(xLabel, yLabel, xLog),
+    ...extra
+  });
 
-// ─── Observer convergence ─────────────────────────────────────────
-// Simulate 2nd-order closed-loop: A_cl = A - B*K - L*C
-// True state: x1(t) ~ 0.5*exp(-2.59t)*cos(2.75t)  (LQR closed-loop)
-// Estimated: observer poles at -15, -20 → very fast convergence
-function lqrResponse(t) {
-  return 0.5 * Math.exp(-2.59*t) * Math.cos(2.75*t);
-}
-function obsEstimate(t) {
-  const obsDecay = Math.exp(-17.5*t);  // mean observer pole
-  const err = 0.5 * obsDecay;
-  return lqrResponse(t) + err * (1 - obsDecay);
-}
-const tArr = Array.from({length: 80}, (_,i) => i*2/79);
-new Chart(document.getElementById('observerChart'), {
-  type: 'line',
-  data: { datasets: [
-    { label: 'x₁ (true)', data: tArr.map(t => ({x:t, y:lqrResponse(t)})),
-      borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.2 },
-    { label: 'x̂₁ (estimated)', data: tArr.map(t => ({x:t, y:obsEstimate(t)})),
-      borderColor: '#f472b6', borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0.2 }
-  ]},
-  options: { ...base, scales: {
-    x: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Time (s)', color:TICK} },
-    y: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Position (m)', color:TICK} }
-  }}
-});
+  // ─── Bode magnitude & phase ──────────────────────────────────────
+  // G(jw) = 1 / (2 - w² + j·0.5w)
+  function bodeMag(w)   { const r=2-w*w, i=0.5*w; return 20*Math.log10(1/Math.sqrt(r*r+i*i)); }
+  function bodePhase(w) { const r=2-w*w, i=0.5*w; return -Math.atan2(i, r)*180/Math.PI; }
 
-// ─── PID outputs ──────────────────────────────────────────────────
-new Chart(document.getElementById('pidChart'), {
-  type: 'bar',
-  data: {
-    labels: ['e=0.50', 'e=0.38', 'e=0.25', 'e=0.12', 'e=0.04'],
-    datasets: [
-      { label: 'Control signal u', data: [3.0, 2.211, 0.182, -0.824, -0.801],
+  // Build 300 log-spaced points from 0.05 to 100 rad/s
+  const ws = Array.from({length: 300}, (_, k) => 0.05 * Math.pow(2000, k/299));
+
+  new Chart(document.getElementById('bodeChart'), {
+    type: 'scatter',
+    data: { datasets: [{
+      label: 'Magnitude (dB)',
+      data: ws.map(w => ({ x: w, y: bodeMag(w) })),
+      borderColor: '#10b981',
+      backgroundColor: 'rgba(16,185,129,0.08)',
+      borderWidth: 2.5,
+      pointRadius: 0,
+      showLine: true,
+      fill: true,
+      tension: 0.2
+    }]},
+    options: baseOpts('Frequency (rad/s)', 'Magnitude (dB)', true)
+  });
+
+  new Chart(document.getElementById('phaseChart'), {
+    type: 'scatter',
+    data: { datasets: [{
+      label: 'Phase (°)',
+      data: ws.map(w => ({ x: w, y: bodePhase(w) })),
+      borderColor: '#fb7185',
+      backgroundColor: 'rgba(251,113,133,0.08)',
+      borderWidth: 2.5,
+      pointRadius: 0,
+      showLine: true,
+      fill: true,
+      tension: 0.2
+    }]},
+    options: baseOpts('Frequency (rad/s)', 'Phase (°)', true)
+  });
+
+  // ─── Observer convergence ─────────────────────────────────────────
+  function lqrResp(t) { return 0.5 * Math.exp(-2.59*t) * Math.cos(2.75*t); }
+  function obsEst(t)  { return lqrResp(t) + 0.5 * Math.exp(-17.5*t); }
+  const tArr = Array.from({length: 100}, (_, i) => i * 2 / 99);
+
+  new Chart(document.getElementById('observerChart'), {
+    type: 'scatter',
+    data: { datasets: [
+      { label: 'x₁ true',      data: tArr.map(t=>({x:t,y:lqrResp(t)})), borderColor:'#38bdf8', borderWidth:2.5, pointRadius:0, showLine:true, tension:0.2, fill:false },
+      { label: 'x̂₁ estimated', data: tArr.map(t=>({x:t,y:obsEst(t)})),  borderColor:'#f472b6', borderWidth:2,   pointRadius:0, showLine:true, tension:0.2, fill:false, borderDash:[6,4] }
+    ]},
+    options: baseOpts('Time (s)', 'Position (m)', false)
+  });
+
+  // ─── PID bar chart ────────────────────────────────────────────────
+  new Chart(document.getElementById('pidChart'), {
+    type: 'bar',
+    data: {
+      labels: ['e=0.50','e=0.38','e=0.25','e=0.12','e=0.04'],
+      datasets: [{ label: 'Control signal u (N)', data: [3.0, 2.211, 0.182, -0.824, -0.801],
         backgroundColor: ['#ef4444','#38bdf8','#34d399','#f59e0b','#8b5cf6'],
-        borderRadius: 6 }
-    ]
-  },
-  options: { ...base, scales: {
-    x: { grid:{color:GRID}, ticks:{color:TICK} },
-    y: { grid:{color:GRID}, ticks:{color:TICK},
-         title:{display:true, text:'u(t) [N]', color:TICK},
-         min: -2, max: 3.5 }
-  }}
-});
+        borderRadius: 6 }]
+    },
+    options: { ...baseOpts(null, 'u(t) [N]', false), scales: { ...mkScales(null,'u(t) [N]',false), y: { ...mkScales(null,'u(t) [N]',false).y, min:-2, max:3.5 } } }
+  });
 
-// ─── Describing function ──────────────────────────────────────────
-const amps = Array.from({length: 80}, (_,i) => 0.5 + i*0.1);
-function satDF(A, D) {
-  if (A <= D) return 1.0;
-  const phi = Math.asin(D/A);
-  return (2/Math.PI) * (phi + (D/A)*Math.sqrt(1 - (D/A)**2));
-}
-new Chart(document.getElementById('dfChart'), {
-  type: 'line',
-  data: { datasets: [
-    { label: 'N(A) saturation limit = 3N', data: amps.map(a => ({x:a, y:satDF(a,3)})),
-      borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,0.1)',
-      borderWidth: 2.5, pointRadius: 0, fill: true, tension: 0.2 }
-  ]},
-  options: { ...base, scales: {
-    x: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Amplitude A (N)', color:TICK} },
-    y: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'DF gain N(A)', color:TICK}, min: 0, max: 1.05 }
-  }}
-});
+  // ─── Describing function ──────────────────────────────────────────
+  function satDF(A, D) {
+    if (A <= D) return 1.0;
+    const ratio = D / A;
+    const phi = Math.asin(ratio);
+    return (2 / Math.PI) * (phi + ratio * Math.sqrt(1 - ratio * ratio));
+  }
+  const amps = Array.from({length: 120}, (_, i) => 0.3 + i * 0.08);
 
-// ─── Simulation chart ─────────────────────────────────────────────
-function sim(t) { return 0.5 * Math.exp(-2.59*t) * Math.cos(2.75*t); }
-const tSim = Array.from({length: 80}, (_,i) => i*2/79);
-const xTrue = tSim.map(sim);
-// observer lags at t=0 then catches up quickly
-const xEst = tSim.map(t => t < 0.01 ? 0.0 : sim(t) + 0.5*Math.exp(-15*t));
+  new Chart(document.getElementById('dfChart'), {
+    type: 'scatter',
+    data: { datasets: [{
+      label: 'N(A)  saturation = 3 N',
+      data: amps.map(a => ({ x: a, y: satDF(a, 3) })),
+      borderColor: '#fb923c',
+      backgroundColor: 'rgba(251,146,60,0.10)',
+      borderWidth: 2.5,
+      pointRadius: 0,
+      showLine: true,
+      fill: true,
+      tension: 0.2
+    }]},
+    options: { ...baseOpts('Amplitude A (N)', 'DF gain N(A)', false), scales: { ...mkScales('Amplitude A (N)','DF gain N(A)',false), y: { ...mkScales(null,'DF gain N(A)',false).y, min:0, max:1.05 } } }
+  });
 
-new Chart(document.getElementById('simChart'), {
-  type: 'line',
-  data: { datasets: [
-    { label: 'x₁(t) – true plant state', data: tSim.map((t,i) => ({x:t, y:xTrue[i]})),
-      borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: false },
-    { label: 'x̂₁(t) – observer estimate', data: tSim.map((t,i) => ({x:t, y:xEst[i]})),
-      borderColor: '#f472b6', borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0.3, fill: false },
-    { label: 'Control effort u(t)', data: tSim.map((t) => ({x:t, y:-0.8*sim(t)*10})),
-      borderColor: '#34d399', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, borderDash: [2,4] }
-  ]},
-  options: { ...base, scales: {
-    x: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Time (s)', color:TICK} },
-    y: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Position (m) / Force (N)', color:TICK} }
-  }}
+  // ─── Closed-loop simulation chart ────────────────────────────────
+  function sim(t)   { return 0.5 * Math.exp(-2.59*t) * Math.cos(2.75*t); }
+  function xEst2(t) { return t < 0.01 ? 0 : sim(t) + 0.5*Math.exp(-15*t); }
+  const tSim = Array.from({length: 120}, (_, i) => i * 2 / 119);
+
+  new Chart(document.getElementById('simChart'), {
+    type: 'scatter',
+    data: { datasets: [
+      { label: 'x₁(t) – true state',       data: tSim.map(t=>({x:t,y:sim(t)})),           borderColor:'#38bdf8', borderWidth:2.5, pointRadius:0, showLine:true, tension:0.3, fill:false },
+      { label: 'x̂₁(t) – observer estimate',data: tSim.map(t=>({x:t,y:xEst2(t)})),         borderColor:'#f472b6', borderWidth:2,   pointRadius:0, showLine:true, tension:0.3, fill:false, borderDash:[7,4] },
+      { label: 'u(t) control effort (÷10)', data: tSim.map(t=>({x:t,y:-sim(t)*8})),         borderColor:'#34d399', borderWidth:1.5, pointRadius:0, showLine:true, tension:0.3, fill:false, borderDash:[3,4] }
+    ]},
+    options: baseOpts('Time (s)', 'Position (m) / Force (N)', false)
+  });
 });
 </script>
 </body>
