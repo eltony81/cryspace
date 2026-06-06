@@ -123,4 +123,37 @@ describe CrySpace::TransferFunction do
     g_c = g_d.to_continuous
     g_c.den[1].value.should be_close(2.0, 1e-3)
   end
+
+  it "designs Chebyshev Type I and digital Butterworth filters" do
+    cheb = CrySpace::TransferFunction.cheby1(1, 1.0, 2.0)
+    cheb.num.size.should eq(1)
+    cheb.den.size.should eq(2)
+    
+    but_d = CrySpace::TransferFunction.butter_digital(1, 10.0, 0.05)
+    but_d.dt.should eq(0.05)
+  end
+
+  it "discretizes using matched pole-zero method (:matched)" do
+    # G(s) = 1 / (s + 2)
+    # Pole s = -2 maps to z = e^(-2 * 0.1) = e^(-0.2) = 0.81873
+    # With matched, continuous gain at s=0 is 0.5.
+    # Discrete system should have pole at z = 0.81873 and match gain at DC:
+    # G_d(z) = K_d / (z - 0.81873)  =>  G_d(1) = K_d / (1 - 0.81873) = 0.5  =>  K_d = 0.5 * 0.18127 = 0.090634
+    g = CrySpace::TransferFunction.new([1.0].to_tensor, [1.0, 2.0].to_tensor)
+    g_d = g.to_discrete(0.1, :matched)
+    g_d.den[1].value.should be_close(-0.81873, 1e-4)
+    g_d.num[0].value.should be_close(0.090634, 1e-4)
+  end
+
+  it "designs lead-lag compensator (leadlag) and loop shaping weight (makeweight)" do
+    comp = CrySpace::TransferFunction.leadlag(2.0, 10.0, 1.5)
+    comp.num[0].value.should eq(1.5)
+    comp.num[1].value.should eq(3.0)
+    comp.den[1].value.should eq(10.0)
+    
+    w = CrySpace::TransferFunction.makeweight(0.1, 10.0, 2.0)
+    w.num[0].value.should be_close(0.5, 1e-5) # 1 / 2.0
+    w.num[1].value.should be_close(10.0, 1e-5)
+    w.den[1].value.should be_close(1.0, 1e-5) # 10 * 0.1
+  end
 end

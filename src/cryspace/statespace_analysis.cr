@@ -453,5 +453,79 @@ module CrySpace
         (term + @d).inv
       end
     end
+
+    # Extracts crossover frequencies.
+    # Returns: {omega_gc (gain crossover), omega_pc (phase crossover)}
+    def margin_frequencies
+      _, _, _, w_gc, w_pc = stability_margins
+      {w_gc, w_pc}
+    end
+
+    # Computes MIMO system bandwidth using singular values frequency response.
+    def mimo_bandwidth : Float64
+      dc_sv = dcgain.svd[1][0].value
+      target = dc_sv / Math.sqrt(2.0)
+      omega = Float64Tensor.linear_space(-2.0, 4.0, 1000).map { |v| 10.0 ** v }
+      _, sv = sigma_data(omega)
+      best_w = 0.0
+      min_diff = Float64::INFINITY
+      omega.size.times do |i|
+        diff = (sv[i, 0].value - target).abs
+        if diff < min_diff
+          min_diff = diff
+          best_w = omega[i].value
+        end
+      end
+      best_w
+    end
+
+    # Computes normalized coprime factorization G = N * M^-1
+    def coprime_factorization : Tuple(StateSpace, StateSpace)
+      q = Float64Tensor.identity(n_states)
+      r = Float64Tensor.identity(n_inputs)
+      k_gain, _, _ = lqr(q, r)
+      a_cl = @a - @b.matmul(k_gain)
+      m_sys = StateSpace.new(a_cl, @b, -k_gain, Float64Tensor.identity(n_inputs), @dt)
+      n_sys = StateSpace.new(a_cl, @b, @c - @d.matmul(k_gain), @d, @dt)
+      {n_sys, m_sys}
+    end
+
+    # Computes static decouple gain matrix W (where G(0)*W is decoupled/diagonal)
+    def decouple_gain : Float64Tensor
+      dc = dcgain
+      dc.shape[0] == dc.shape[1] ? dc.inv : dc.transpose
+    end
+
+    # Computes the H2 norm of a continuous-time LTI system.
+    # Raises an error if D is non-zero (infinite H2 norm) or if system is discrete.
+    def h2norm : Float64
+      dt = @dt
+      if dt && dt > 0.0
+        raise ArgumentError.new("H2 norm is only supported for continuous-time systems")
+      end
+
+      # Check if D is non-zero
+      n_outputs.times do |r|
+        n_inputs.times do |c|
+          if @d[r, c].value.abs > 1e-9
+            raise ArgumentError.new("H2 norm is infinite for systems with feedthrough D != 0")
+          end
+        end
+      end
+
+      # Solve A*P + P*A^T + B*B^T = 0.
+      # Note: lyap(q) solves A*P + P*A^T + Q = 0, so we pass B*B^T.
+      b_bt = @b.matmul(@b.transpose)
+      p = lyap(b_bt)
+
+      # Trace of C * P * C^T
+      c_p_ct = @c.matmul(p).matmul(@c.transpose)
+      trace_val = 0.0
+      [c_p_ct.shape[0], c_p_ct.shape[1]].min.times do |i|
+        trace_val += c_p_ct[i, i].value
+      end
+
+      Math.sqrt(trace_val)
+    end
   end
 end

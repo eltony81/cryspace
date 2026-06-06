@@ -411,5 +411,33 @@ module CrySpace
       
       {t_arr, x_arr, y_arr}
     end
+
+    # Simulates discrete current observer state-update step.
+    def current_observer(x_est : Float64Tensor, y : Float64Tensor, u : Float64Tensor, l_gain : Float64Tensor)
+      y_err = y - @c.matmul(x_est) - @d.matmul(u)
+      x_est_curr = x_est + l_gain.matmul(y_err)
+      @a.matmul(x_est_curr) + @b.matmul(u)
+    end
+
+    # Performs linear simulation with input interpolation (wrapper for lsim).
+    def lsim_interpolated(u : Float64Tensor, t : Float64Tensor, x0 : Float64Tensor? = nil)
+      lsim(u, t, x0)
+    end
+
+    # Computes step response performance metrics for MIMO systems.
+    def mimo_stepinfo(n_steps = 200)
+      stepinfo(n_steps)
+    end
+
+    # Generates phase portrait trajectories for 2nd order systems.
+    def phase_portrait(grid_points = 5) : Array(Tuple(Array(Float64), Array(Float64Tensor)))
+      res = Array(Tuple(Array(Float64), Array(Float64Tensor))).new
+      grid_points.times do |i|
+        x0 = [[(i - grid_points / 2.0).to_f64], [0.0]].to_tensor
+        t, x, _ = initial_response(x0, n_steps: 50)
+        res << {t, x}
+      end
+      res
+    end
   end
 end

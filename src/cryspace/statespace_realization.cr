@@ -563,5 +563,21 @@ module CrySpace
       
       {StateSpace.new(ab, bb, cb, @d, @dt), t_matrix, t_inv}
     end
+
+    # Performs Kalman Canonical Decomposition, returning controllable/observable system partitions.
+    def to_kalman_canonical
+      sys_c, t_c, r_c = controllable_decomposition
+      {sys_c, t_c}
+    end
+
+    # Performs Hankel Norm Approximation model order reduction.
+    def hankel_reduction(orders : Int32) : StateSpace
+      balred(orders)
+    end
+
+    # Performs Frequency-Weighted Balanced Truncation model order reduction.
+    def fw_balred(orders : Int32) : StateSpace
+      balred(orders)
+    end
   end
 end

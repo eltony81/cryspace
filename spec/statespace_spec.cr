@@ -747,4 +747,163 @@ describe CrySpace::StateSpace do
       kd, _, _ = sys_d.dlqr(q, r, n_cross)
       kd[0, 0].value.should_not be_nil
     end
+
+    it "computes margin_frequencies and mimo_bandwidth" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      w_gc, w_pc = sys.margin_frequencies
+      w_gc.should_not be_nil
+      
+      sys_mimo = CrySpace::StateSpace.new([[-1.0, 0.0], [0.0, -2.0]].to_tensor, [[1.0, 0.0], [0.0, 1.0]].to_tensor, [[1.0, 1.0], [0.0, 1.0]].to_tensor, [[0.0, 0.0], [0.0, 0.0]].to_tensor)
+      sys_mimo.mimo_bandwidth.should be_close(1.0, 0.5)
+    end
+
+    it "computes coprime_factorization and decouple_gain" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      n_sys, m_sys = sys.coprime_factorization
+      n_sys.n_states.should eq(1)
+      m_sys.n_states.should eq(1)
+      
+      w = sys.decouple_gain
+      w[0, 0].value.should be_close(1.0, 1e-9)
+    end
+
+    it "performs Kalman canonical, Hankel reduction, and frequency weighted balanced truncation" do
+      sys = CrySpace::StateSpace.new([[-1.0, 0.0], [0.0, -2.0]].to_tensor, [[1.0], [1.0]].to_tensor, [[1.0, 1.0]].to_tensor, [[0.0]].to_tensor)
+      sys_k, t_k = sys.to_kalman_canonical
+      sys_k.n_states.should eq(2)
+      
+      sys_h = sys.hankel_reduction(1)
+      sys_h.n_states.should eq(1)
+      
+      sys_fw = sys.fw_balred(1)
+      sys_fw.n_states.should eq(1)
+    end
+
+    it "solves LQT finite horizon, ncfsyn, minimum variance, and smith predictor" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      q = [[1.0]].to_tensor
+      r = [[1.0]].to_tensor
+      g = sys.lqt_finite_horizon(q, r, 5)
+      g.size.should eq(5)
+      
+      sys_c, gamma = sys.ncfsyn(sys)
+      sys_c.n_states.should eq(0)
+      
+      sys_mv = sys.minimum_variance_controller
+      sys_mv.n_states.should eq(0)
+      
+      sys_sp = sys.smith_predictor(sys, 0.5)
+      sys_sp.n_states.should eq(1)
+    end
+
+    it "simulates current_observer, lsim_interpolated, mimo_stepinfo, and phase_portrait" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      x_est = sys.current_observer([[0.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[5.0]].to_tensor)
+      x_est[0, 0].value.should_not be_nil
+      
+      t = Float64Tensor.linear_space(0.0, 1.0, 10)
+      u = Float64Tensor.ones([1, 10])
+      t_out, x_out, y_out = sys.lsim_interpolated(u, t)
+      t_out.size.should eq(10)
+      
+      sys.mimo_stepinfo(50).steady_state_value.should_not be_nil
+      
+      sys_2nd = CrySpace::StateSpace.new([[0.0, 1.0], [-2.0, -3.0]].to_tensor, [[0.0], [1.0]].to_tensor, [[1.0, 0.0]].to_tensor, [[0.0]].to_tensor)
+      pp = sys_2nd.phase_portrait(3)
+      pp.size.should eq(3)
+    end
+
+    it "initializes FRD and DescriptorStateSpace" do
+      omega = [1.0].to_tensor
+      resp = Tensor(Complex, CPU(Complex)).zeros([1, 1, 1])
+      frd = CrySpace::FRD.new(omega, resp)
+      frd.omega.size.should eq(1)
+      
+      a = [[-1.0]].to_tensor
+      b = [[1.0]].to_tensor
+      c = [[1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      e = [[1.0]].to_tensor
+      ds = CrySpace::DescriptorStateSpace.new(e, a, b, c, d)
+      ds.e[0, 0].value.should eq(1.0)
+    end
+
+    it "solves Sylvester equation (sylvester)" do
+      a = [[-1.0, 0.0], [0.0, -2.0]].to_tensor
+      b = [[-3.0, 0.0], [0.0, -4.0]].to_tensor
+      c = [[1.0, 1.0], [1.0, 1.0]].to_tensor
+      x = CrySpace::StateSpace.sylvester(a, b, c)
+      
+      # Verify A*X + X*B - C = 0
+      res = a.matmul(x) + x.matmul(b) - c
+      res.to_a.each do |val|
+        val.should be_close(0.0, 1e-9)
+      end
+    end
+
+    it "places poles robustly (place)" do
+      # Continuous 2nd order system: A = [[0, 1], [-2, -3]], B = [[0], [1]], controllable
+      a = [[0.0, 1.0], [-2.0, -3.0]].to_tensor
+      b = [[0.0], [1.0]].to_tensor
+      c = [[1.0, 0.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      # Place poles at -5 and -6
+      k = sys.place([-5.0, -6.0])
+      
+      # Verify eigenvalues of A - B*K are -5 and -6
+      a_cl = a - b.matmul(k)
+      w_cl = a_cl.eigvals_c.to_a
+      
+      # Sort eigenvalues by real part
+      w_cl.sort_by!(&.real)
+      w_cl[0].real.should be_close(-6.0, 1e-4)
+      w_cl[1].real.should be_close(-5.0, 1e-4)
+    end
+
+    it "computes H2 norm (h2norm)" do
+      # G(s) = 1 / (s + 1)
+      # H2 norm should be sqrt(0.5) = 0.70710678
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      sys.h2norm.should be_close(0.70710678, 1e-5)
+    end
+
+    it "performs least squares parameter estimation (least_squares_estimation)" do
+      # Discrete TF: y[k] = 0.5 * y[k-1] + 2.0 * u[k]
+      # y[k] - 0.5 * y[k-1] = 2.0 * u[k]  =>  den = [1, -0.5], num = [2, 0]
+      dt = 0.1
+      r = Random.new(42)
+      u = Float64Tensor.zeros([50])
+      50.times { |i| u[i] = r.rand(-1.0..1.0) }
+      
+      y = Float64Tensor.zeros([50])
+      y[0] = 2.0 * u[0].value
+      (1..49).each do |k|
+        y[k] = 0.5 * y[k - 1].value + 2.0 * u[k].value
+      end
+      
+      sys_ident = CrySpace::Ident.least_squares_estimation(u, y, 1, dt)
+      sys_ident.den[1].value.should be_close(-0.5, 1e-5)
+      sys_ident.num[0].value.should be_close(2.0, 1e-5)
+    end
+
+    it "performs ERA state space realization (era)" do
+      # Discrete LTI system: x[k+1] = 0.5 * x[k] + 1.0 * u[k], y[k] = 1.0 * x[k]
+      # Impulse response: y[0] = 0, y[1] = 1, y[2] = 0.5, y[3] = 0.25, etc.
+      ir = [0.0, 1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625].to_tensor
+      sys_real = CrySpace::Ident.era(ir, 1, 1, 1, 0.1)
+      sys_real.a[0, 0].value.should be_close(0.5, 1e-5)
+      (sys_real.b[0, 0].value * sys_real.c[0, 0].value).should be_close(1.0, 1e-5)
+    end
+
+    it "computes describing functions for saturation and deadzone" do
+      # Saturation limit = 1.0
+      CrySpace::Nonlinear.describing_function_saturation(0.5, 1.0).should be_close(1.0, 1e-9)
+      CrySpace::Nonlinear.describing_function_saturation(2.0, 1.0).should be_close(0.6089978, 1e-5)
+      
+      # Deadzone half-width = 0.5
+      CrySpace::Nonlinear.describing_function_deadzone(0.2, 0.5).should be_close(0.0, 1e-9)
+      CrySpace::Nonlinear.describing_function_deadzone(1.0, 0.5).should be_close(0.3910022, 1e-5)
+    end
   end

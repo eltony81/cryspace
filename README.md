@@ -43,6 +43,15 @@
   - Peak Gain (`peak_gain` / H-infinity norm) solver.
   - Loop Margins (`loop_margins` / Nyquist distance bounds).
   - Robust Optimal Control synthesis: $H_2$ (`h2syn`) and $H_\infty$ (`hinfsyn`) state-feedback.
+  - Sylvester Equation solver (`sylvester`) for observer and block diagonalization designs.
+  - Robust Pole Placement (`place`) for multi-input systems.
+  - $H_2$ Norm (`h2norm`) calculation of continuous LTI systems.
+  - Matched Pole-Zero discretization (`to_discrete(dt, method: :matched)`).
+  - Lead-Lag compensator design (`leadlag`).
+  - Loop shaping weight generator (`makeweight`) for robust $H_\infty$ filters.
+  - Least Squares System Identification (`least_squares_estimation`) for TF parameters.
+  - Eigenvalue Realization Algorithm (`era`) for realization from impulse response data.
+  - Describing Functions (`describing_function_saturation`, `describing_function_deadzone`) for nonlinear analysis.
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -841,6 +850,72 @@ k, p, poles = sys.lqr(q, r, n_cross)
 
 # discrete DLQR with cross-coupling N
 kd, pd, poles_d = sys_d.dlqr(q, r, n_cross)
+```
+
+#### AAA. Sylvester Equation Solver (`sylvester`)
+Solves the continuous-time matrix Sylvester equation $AX + XB = C$:
+```crystal
+# Solve A*X + X*B = C
+x = CrySpace::StateSpace.sylvester(a, b, c)
+```
+
+#### BBB. Multi-Input Robust Pole Placement (`place`)
+Places closed-loop poles at desired locations for SISO or multi-input systems:
+```crystal
+# Designs feedback gain matrix K to place poles
+k = sys.place([-5.0, -6.0])
+```
+
+#### CCC. H2 Norm (`h2norm`)
+Computes the $H_2$ norm of a continuous-time LTI system:
+```crystal
+# Get H2 norm
+norm_h2 = sys.h2norm
+```
+
+#### DDD. Matched Pole-Zero Discretization (`method: :matched`)
+Converts a continuous system to a discrete system using Matched Pole-Zero mapping:
+```crystal
+# Discretize using matched pole-zero mapping
+tf_d = tf.to_discrete(dt: 0.1, method: :matched)
+```
+
+#### EEE. Lead-Lag Compensator Design (`leadlag`)
+Designs a classic phase lead/lag compensator transfer function:
+```crystal
+# Design a lead compensator with zero=2.0, pole=10.0, gain=1.5
+comp = CrySpace::TransferFunction.leadlag(2.0, 10.0, 1.5)
+```
+
+#### FFF. Loop Shaping Weight Generator (`makeweight`)
+Creates a frequency-dependent loop-shaping performance weight $W(s)$:
+```crystal
+# Low-freq gain = 0.1, crossover frequency = 10.0, high-freq gain = 2.0
+w = CrySpace::TransferFunction.makeweight(0.1, 10.0, 2.0)
+```
+
+#### GGG. Least Squares System Identification (`least_squares_estimation`)
+Estimates a TransferFunction parameters from input-output time series:
+```crystal
+# Identify TF of order 1 from excitation data
+sys_ident = CrySpace::Ident.least_squares_estimation(u_data, y_data, 1, dt)
+```
+
+#### HHH. Eigenvalue Realization Algorithm (`era`)
+Realizes a StateSpace system from discrete-time impulse response data:
+```crystal
+# Realize StateSpace of order 1 from impulse response data
+sys_real = CrySpace::Ident.era(impulse_resp, 1, 1, 1, dt)
+```
+
+#### III. Describing Functions for Nonlinearities
+Computes describing functions for nonlinear saturation and deadzone blocks:
+```crystal
+# Saturation describing function for amplitude 2.0, limit 1.0
+sat_gain = CrySpace::Nonlinear.describing_function_saturation(2.0, 1.0)
+
+# Deadzone describing function for amplitude 1.0, half-width 0.5
+dead_gain = CrySpace::Nonlinear.describing_function_deadzone(1.0, 0.5)
 ```
 
 ## Testing

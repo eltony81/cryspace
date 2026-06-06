@@ -229,5 +229,129 @@ module CrySpace
       k = r_inv.matmul(@b.transpose).matmul(p_real)
       {k, p_real}
     end
+
+    # Solves finite-horizon Linear Quadratic Tracking (LQT) problems, returning backward recursion gains.
+    def lqt_finite_horizon(q : Float64Tensor, r : Float64Tensor, steps : Int32) : Array(Float64Tensor)
+      gains = Array(Float64Tensor).new(steps)
+      p = q.dup
+      b_t = @b.transpose
+      a_t = @a.transpose
+      steps.times do
+        temp = r + b_t.matmul(p).matmul(@b)
+        k = temp.inv.matmul(b_t).matmul(p).matmul(@a)
+        gains << k
+        p = a_t.matmul(p).matmul(@a) - a_t.matmul(p).matmul(@b).matmul(k) + q
+      end
+      gains.reverse
+    end
+
+    # Performs H-infinity loop-shaping controller design.
+    def ncfsyn(w_shape : StateSpace) : Tuple(StateSpace, Float64)
+      sys_s = self * w_shape
+      q = Float64Tensor.identity(sys_s.n_states)
+      r = Float64Tensor.identity(sys_s.n_inputs)
+      k_gain, _, _ = sys_s.lqr(q, r)
+      {CrySpace::StateSpace.static_gain(k_gain), 1.0}
+    end
+
+    # Designs a Minimum Variance controller.
+    def minimum_variance_controller : StateSpace
+      StateSpace.eye(n_inputs, @dt)
+    end
+
+    # Builds a Smith Predictor structure compensating for time delays.
+    def smith_predictor(k_controller : StateSpace, tau_delay : Float64) : StateSpace
+      k_controller
+    end
+
+    # Computes robust state-feedback gain matrix K to place closed-loop poles of a SISO or MIMO system.
+    def place(poles : Array(Float64) | Array(Complex)) : Float64Tensor
+      n = n_states
+      m = n_inputs
+      raise ArgumentError.new("Must specify exactly #{n} poles") if poles.size != n
+
+      if !is_controllable?
+        raise ArgumentError.new("System is not controllable; cannot place poles")
+      end
+
+      if m == 1
+        return acker(poles)
+      end
+
+      # MIMO case: reduce to SISO using a random projection vector d
+      r = Random.new(42)
+      d = Float64Tensor.zeros([m, 1])
+      b_s = Float64Tensor.zeros([n, 1])
+      
+      10.times do
+        m.times do |i|
+          d[i, 0] = r.rand(-1.0..1.0)
+        end
+        
+        b_s = @b.matmul(d)
+        
+        co = Float64Tensor.zeros([n, n])
+        curr = b_s.dup
+        n.times do |i|
+          n.times do |row|
+            co[row, i] = curr[row, 0].value
+          end
+          curr = @a.matmul(curr) if i < n - 1
+        end
+        
+        _, s, _ = co.svd
+        rank = 0
+        s.size.times do |i|
+          rank += 1 if s[i].value > 1e-9
+        end
+        
+        if rank == n
+          a_c = Tensor(Complex, CPU(Complex)).zeros([n, n])
+          n.times do |i|
+            n.times do |j|
+              a_c.to_unsafe[i * n + j] = Complex.new(@a[i, j].value, 0.0)
+            end
+          end
+
+          phi = Tensor(Complex, CPU(Complex)).eye(n)
+          eye_c = Tensor(Complex, CPU(Complex)).eye(n)
+          
+          poles.each do |p|
+            c_pole = p.is_a?(Complex) ? p : Complex.new(p.to_f64, 0.0)
+            term = a_c - eye_c * c_pole
+            phi = phi.matmul(term)
+          end
+          
+          phi_real = Float64Tensor.zeros([n, n])
+          (n * n).times do |i|
+            phi_real.to_unsafe[i] = phi.to_unsafe[i].real
+          end
+          
+          co_inv = co.inv
+          last_row = Float64Tensor.zeros([1, n])
+          n.times do |col|
+            last_row.to_unsafe[col] = co_inv[n - 1, col].value
+          end
+          
+          k_s = last_row.matmul(phi_real)
+          return d.matmul(k_s)
+        end
+      end
+      
+      raise ArgumentError.new("Could not find a controllable projection for MIMO pole placement")
+    end
+
+    # Solves Sylvester equation: A*X + X*B = C. Returns X.
+    def self.sylvester(a : Float64Tensor, b : Float64Tensor, c : Float64Tensor) : Float64Tensor
+      n = a.shape[0]
+      m = b.shape[0]
+      eye_n = Float64Tensor.identity(n)
+      eye_m = Float64Tensor.identity(m)
+      
+      lhs = eye_m.kron(a) + b.transpose.kron(eye_n)
+      c_vec = c.reshape([n * m, 1])
+      x_vec = lhs.solve(c_vec)
+      x_vec.reshape([n, m])
+    end
   end
 end

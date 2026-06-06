@@ -43,8 +43,10 @@ module CrySpace
         dd = @d + @c.matmul(m).matmul(@b) * (gbt_alpha * dt)
         
         StateSpace.new(ad, bd, cd, dd, dt)
+      elsif method == :matched
+        to_transferfunction.to_discrete(dt, :matched).to_statespace
       else
-        raise ArgumentError.new("Discretization method must be :zoh, :gbt, :bilinear, or :tustin")
+        raise ArgumentError.new("Discretization method must be :zoh, :gbt, :bilinear, :tustin, or :matched")
       end
     end
 

@@ -5,6 +5,8 @@ require "./statespace_realization"
 require "./statespace_connections"
 require "./statespace_conversion"
 require "./statespace_synthesis"
+require "./frd"
+require "./descriptor"
 
 module CrySpace
   class StateSpace

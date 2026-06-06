@@ -61,7 +61,7 @@ module CrySpace
       # Roots of polynomial using companion matrix eigenvalues
       # Assumes poly[0] is the coefficient of highest power
       n = poly.size - 1
-      return [Complex.new(0.0, 0.0)] if n <= 0
+      return Array(Complex).new if n <= 0
       
       # Normalize
       p = poly / poly[0].value
@@ -382,12 +382,146 @@ def to_statespace
 
     # Discretizes a continuous TransferFunction directly.
     def to_discrete(dt : Float64, method : Symbol = :zoh) : TransferFunction
-      to_statespace.sample(dt, method).to_transferfunction
+      if method == :matched
+        s_poles = poles
+        s_zeros = zeros
+        
+        # Complex exponential mapping: e^(s * dt)
+        complex_exp = ->(c : Complex) {
+          r = Math.exp(c.real * dt)
+          theta = c.imag * dt
+          Complex.new(r * Math.cos(theta), r * Math.sin(theta))
+        }
+        
+        z_poles = s_poles.map { |p| complex_exp.call(p) }
+        z_zeros = s_zeros.map { |z| complex_exp.call(z) }
+        
+        n_poles = s_poles.size
+        n_zeros = s_zeros.size
+        if n_poles > n_zeros
+          num_inf_zeros = [n_poles - n_zeros - 1, 0].max
+          num_inf_zeros.times do
+            z_zeros << Complex.new(-1.0, 0.0)
+          end
+        end
+        
+        den_d_c = TransferFunction.reconstruct_poly(z_poles)
+        num_d_c = TransferFunction.reconstruct_poly(z_zeros)
+        
+        has_dc_pole_or_zero = s_poles.any? { |p| p.abs < 1e-5 } || s_zeros.any? { |z| z.abs < 1e-5 }
+        s_match = has_dc_pole_or_zero ? Complex.new(0.0, 0.1 * Math::PI / dt) : Complex.new(0.0, 0.0)
+        z_match = complex_exp.call(s_match)
+        
+        g_cont = evaluate(s_match)
+        
+        num_val_d = Complex.new(0.0, 0.0)
+        num_d_c.size.times do |i|
+          num_val_d += Complex.new(num_d_c[i].value, 0.0) * complex_power(z_match, num_d_c.size - 1 - i)
+        end
+        den_val_d = Complex.new(0.0, 0.0)
+        den_d_c.size.times do |i|
+          den_val_d += Complex.new(den_d_c[i].value, 0.0) * complex_power(z_match, den_d_c.size - 1 - i)
+        end
+        g_disc_raw = num_val_d / den_val_d
+        
+        kd = (g_cont / g_disc_raw).real
+        num_d = num_d_c * kd
+        TransferFunction.new(num_d, den_d_c, dt)
+      else
+        to_statespace.sample(dt, method).to_transferfunction
+      end
+    end
+
+    private def complex_power(base : Complex, power : Int32) : Complex
+      res = Complex.new(1.0, 0.0)
+      power.times { res *= base }
+      res
+    end
+
+    # Evaluates the transfer function at a complex frequency s.
+    def evaluate(s : Complex) : Complex
+      n_num = @num.size
+      n_den = @den.size
+      num_val = Complex.new(0.0, 0.0)
+      n_num.times do |i|
+        num_val += Complex.new(@num[i].value, 0.0) * complex_power(s, n_num - 1 - i)
+      end
+      den_val = Complex.new(0.0, 0.0)
+      n_den.times do |i|
+        den_val += Complex.new(@den[i].value, 0.0) * complex_power(s, n_den - 1 - i)
+      end
+      num_val / den_val
+    end
+
+    # Reconstructs polynomial coefficients from its roots.
+    def self.reconstruct_poly(roots : Array(Complex)) : Float64Tensor
+      poly = [Complex.new(1.0, 0.0)]
+      roots.each do |r|
+        next_poly = Array(Complex).new(poly.size + 1, Complex.new(0.0, 0.0))
+        poly.size.times do |i|
+          next_poly[i] += poly[i]
+          next_poly[i + 1] += poly[i] * -r
+        end
+        poly = next_poly
+      end
+      poly.map(&.real).to_tensor
+    end
+
+    # Designs a phase lead or lag compensator: Gc(s) = gain * (s + zero) / (s + pole).
+    def self.leadlag(zero : Float64, pole : Float64, gain : Float64 = 1.0) : TransferFunction
+      TransferFunction.new([gain, gain * zero].to_tensor, [1.0, pole].to_tensor)
+    end
+
+    # Generates a standard loop shaping weighting filter: W(s) = (s/high + middle) / (s + middle * low).
+    def self.makeweight(low : Float64, middle : Float64, high : Float64) : TransferFunction
+      TransferFunction.new([1.0 / high, middle].to_tensor, [1.0, middle * low].to_tensor)
     end
 
     # Converts a discrete TransferFunction back to continuous.
     def to_continuous : TransferFunction
       to_statespace.to_continuous.to_transferfunction
+    end
+
+    # Designs an analog lowpass Chebyshev Type I filter of given order, passband ripple rp, and cutoff frequency Wn.
+    def self.cheby1(order : Int32, rp : Float64, wn : Float64) : TransferFunction
+      raise ArgumentError.new("Order must be at least 1") if order < 1
+      raise ArgumentError.new("Cutoff frequency Wn must be positive") if wn <= 0.0
+      
+      eps = Math.sqrt(10.0 ** (rp / 10.0) - 1.0)
+      mu = Math.asinh(1.0 / eps) / order
+      poles = Array(Complex).new(order)
+      
+      order.times do |k|
+        theta = Math::PI * (2 * (k + 1) - 1) / (2 * order)
+        s_real = -wn * Math.sinh(mu) * Math.sin(theta)
+        s_imag = wn * Math.cosh(mu) * Math.cos(theta)
+        poles << Complex.new(s_real, s_imag)
+      end
+      
+      reconstruct = ->(roots : Array(Complex)) {
+        poly = [Complex.new(1.0, 0.0)]
+        roots.each do |r|
+          next_poly = Array(Complex).new(poly.size + 1, Complex.new(0.0, 0.0))
+          poly.size.times do |i|
+            next_poly[i] += poly[i]
+            next_poly[i + 1] += poly[i] * -r
+          end
+          poly = next_poly
+        end
+        poly.map(&.real).to_tensor
+      }
+      
+      den = reconstruct.call(poles)
+      dc_target = order.odd? ? 1.0 : 1.0 / Math.sqrt(1.0 + eps * eps)
+      num_val = den.to_a.last * dc_target
+      num = [num_val].to_tensor
+      
+      TransferFunction.new(num, den)
+    end
+
+    # Designs a digital lowpass Butterworth filter using bilinear discretization.
+    def self.butter_digital(order : Int32, wn : Float64, dt : Float64) : TransferFunction
+      butter(order, wn).to_discrete(dt, :tustin)
     end
   end
 end
