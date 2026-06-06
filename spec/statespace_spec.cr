@@ -325,4 +325,63 @@ describe CrySpace::StateSpace do
       t_out.size.should eq(201)
       y_out[-1, 0].value.should be_close(1 - Math.exp(-2.0), 1e-4)
     end
+
+    it "converts to observability canonical form" do
+      num = [1.0].to_tensor
+      den = [1.0, 1.0].to_tensor
+      sys = CrySpace::TransferFunction.new(num, den).to_statespace
+      
+      sys_o = sys.to_observability_form
+      sys_o.n_states.should eq(1)
+      sys_o.a[0, 0].value.should eq(-1.0)
+    end
+
+    it "converts to modal canonical form" do
+      a = [[-1.0, 0.0], [0.0, -2.0]].to_tensor
+      b = [[1.0], [1.0]].to_tensor
+      c = [[1.0, 1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      sys_m = sys.to_modal_form
+      poles = sys_m.poles.sort_by { |p| {p.real, p.imag} }
+      poles[0].real.should be_close(-2.0, 1e-4)
+      poles[1].real.should be_close(-1.0, 1e-4)
+    end
+
+    it "evaluates root locus gains" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      gains = [0.0, 1.0, 2.0].to_tensor
+      poles_arr = sys.root_locus(gains)
+      
+      poles_arr[0][0].real.should be_close(-1.0, 1e-9)
+      poles_arr[1][0].real.should be_close(-2.0, 1e-9)
+      poles_arr[2][0].real.should be_close(-3.0, 1e-9)
+    end
+
+    it "computes bode_data and nyquist_data" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      omega = [1.0].to_tensor
+      
+      _, db, deg = sys.bode_data(omega)
+      db[0].should be_close(-3.0103, 1e-3)
+      deg[0].should be_close(-45.0, 1e-3)
+      
+      real_parts, imag_parts = sys.nyquist_data(omega)
+      real_parts[0].should be_close(0.5, 1e-5)
+      imag_parts[0].should be_close(-0.5, 1e-5)
+    end
+
+    it "performs discrete-to-continuous conversion (to_continuous)" do
+      a = [[-2.0]].to_tensor
+      b = [[1.0]].to_tensor
+      c = [[1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys_c = CrySpace::StateSpace.new(a, b, c, d)
+      sys_d = sys_c.sample(0.5)
+      
+      sys_back = sys_d.to_continuous
+      sys_back.a[0, 0].value.should be_close(-2.0, 1e-4)
+      sys_back.b[0, 0].value.should be_close(1.0, 1e-4)
+    end
 end

@@ -804,6 +804,202 @@ module CrySpace
       simulate(t, x0: x0, u: u, method: method)
     end
 
+    # Converts a SISO StateSpace system to Observability Canonical Form.
+    def to_observability_form
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Observability form only supported for SISO systems")
+      end
+      tf = to_transferfunction
+      n = tf.den.size - 1
+      if n == 0
+        return StateSpace.new(
+          Float64Tensor.zeros([0, 0]),
+          Float64Tensor.zeros([0, 1]),
+          Float64Tensor.zeros([1, 0]),
+          [[tf.num[0].value]].to_tensor,
+          @dt
+        )
+      end
+      
+      ss_c = tf.to_statespace
+      StateSpace.new(ss_c.a.transpose, ss_c.c.transpose, ss_c.b.transpose, ss_c.d, @dt)
+    end
+
+    # Converts a StateSpace system to Modal (Diagonal) Form.
+    def to_modal_form
+      n = n_states
+      w, v = @a.eig_c
+      
+      # Form transformation matrix T using real and imaginary parts of eigenvectors
+      t_matrix = Float64Tensor.zeros([n, n])
+      col = 0
+      while col < n
+        is_complex = w.to_unsafe[col].imag.abs > 1e-9
+        if is_complex
+          n.times do |row|
+            t_matrix.to_unsafe[row * n + col] = v.to_unsafe[col * n + row]
+            t_matrix.to_unsafe[row * n + col + 1] = v.to_unsafe[(col + 1) * n + row]
+          end
+          col += 2
+        else
+          n.times do |row|
+            t_matrix.to_unsafe[row * n + col] = v.to_unsafe[col * n + row]
+          end
+          col += 1
+        end
+      end
+      
+      t_inv = t_matrix.inv
+      a_m = t_inv.matmul(@a).matmul(t_matrix)
+      b_m = t_inv.matmul(@b)
+      c_m = @c.matmul(t_matrix)
+      StateSpace.new(a_m, b_m, c_m, @d, @dt)
+    end
+
+    # Evaluates closed-loop poles as gain K varies from 0 to infinity for a SISO system.
+    # Returns an array of pole arrays.
+    def root_locus(gains : Float64Tensor)
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Root locus only supported for SISO systems")
+      end
+      
+      n = n_states
+      m_gains = gains.size
+      res = Array(Array(Complex)).new(m_gains)
+      
+      m_gains.times do |i|
+        k = gains.to_unsafe[i]
+        a_cl = @a - @b.matmul(@c) * k
+        res << a_cl.eigvals_c.to_a
+      end
+      res
+    end
+
+    # Returns Bode data: {omega, magnitudes (dB), phases (degrees)} for a SISO system.
+    def bode_data(omega : Float64Tensor)
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Bode data only supported for SISO systems")
+      end
+
+      h = freqresp(omega)
+      n_points = omega.size
+      
+      mags_db = Array(Float64).new(n_points)
+      phases_deg = Array(Float64).new(n_points)
+      
+      wrap_phase = ->(p : Float64) {
+        val = p % (2.0 * Math::PI)
+        val -= 2.0 * Math::PI if val > Math::PI
+        val += 2.0 * Math::PI if val < -Math::PI
+        val
+      }
+
+      n_points.times do |i|
+        val = h.to_unsafe[i]
+        mags_db << 20.0 * Math.log10(val.abs)
+        phases_deg << wrap_phase.call(Math.atan2(val.imag, val.real)) * 180.0 / Math::PI
+      end
+      
+      {omega, mags_db, phases_deg}
+    end
+
+    # Returns Nyquist data: {real_parts, imaginary_parts} for a SISO system.
+    def nyquist_data(omega : Float64Tensor)
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Nyquist data only supported for SISO systems")
+      end
+
+      h = freqresp(omega)
+      n_points = omega.size
+      
+      real_parts = Array(Float64).new(n_points)
+      imag_parts = Array(Float64).new(n_points)
+      
+      n_points.times do |i|
+        val = h.to_unsafe[i]
+        real_parts << val.real
+        imag_parts << val.imag
+      end
+      
+      {real_parts, imag_parts}
+    end
+
+    # Helper method to compute matrix logarithm using eigenvalue decomposition.
+    def self.logm(matrix : Float64Tensor) : Tensor(Complex, CPU(Complex))
+      n = matrix.shape[0]
+      w, v = matrix.eig_c
+      
+      d_log = Tensor(Complex, CPU(Complex)).zeros([n, n])
+      n.times do |i|
+        val = w.to_unsafe[i]
+        r = val.abs
+        theta = Math.atan2(val.imag, val.real)
+        d_log.to_unsafe[i * n + i] = Complex.new(Math.log(r), theta)
+      end
+      
+      v_c = Tensor(Complex, CPU(Complex)).zeros([n, n])
+      col = 0
+      while col < n
+        is_complex = w.to_unsafe[col].imag.abs > 1e-12
+        if is_complex
+          n.times do |row|
+            real_val = v.to_unsafe[col * n + row]
+            imag_val = v.to_unsafe[(col + 1) * n + row]
+            v_c.to_unsafe[row * n + col] = Complex.new(real_val, imag_val)
+            v_c.to_unsafe[row * n + col + 1] = Complex.new(real_val, -imag_val)
+          end
+          col += 2
+        else
+          n.times do |row|
+            v_c.to_unsafe[row * n + col] = Complex.new(v.to_unsafe[col * n + row], 0.0)
+          end
+          col += 1
+        end
+      end
+      v_c.matmul(d_log).matmul(v_c.inv)
+    end
+
+    # Converts a discrete-time StateSpace system to continuous-time (D2C).
+    def to_continuous
+      dt = @dt
+      if dt.nil? || dt <= 0
+        raise "System is already continuous"
+      end
+      
+      n = n_states
+      m = n_inputs
+      
+      # Form block matrix M = [Ad Bd; 0 I]
+      block = Float64Tensor.zeros([n + m, n + m])
+      n.times do |r|
+        n.times do |c|
+          block[r, c] = @a[r, c].value
+        end
+        m.times do |c|
+          block[r, n + c] = @b[r, c].value
+        end
+      end
+      m.times do |r|
+        block[n + r, n + r] = 1.0
+      end
+      
+      log_m = StateSpace.logm(block)
+      
+      ac = Float64Tensor.zeros([n, n])
+      bc = Float64Tensor.zeros([n, m])
+      
+      n.times do |r|
+        n.times do |c|
+          ac[r, c] = log_m.to_unsafe[r * (n + m) + c].real / dt
+        end
+        m.times do |c|
+          bc[r, c] = log_m.to_unsafe[r * (n + m) + n + c].real / dt
+        end
+      end
+      
+      StateSpace.new(ac, bc, @c, @d, nil)
+    end
+
     def to_s(io)
       io << "StateSpace system:\n"
       io << "A = " << @a << "\n"

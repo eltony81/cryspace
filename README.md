@@ -19,6 +19,11 @@
   - Linear Quadratic Regulator (`lqr`) design.
   - Lyapunov solvers (`lyap` and `dlyap`) for continuous and discrete-time stability analysis.
   - Bode stability margins (`stability_margins`) including Gain Margin and Phase Margin.
+  - State-space realizations: convert systems to Observability Canonical Form (`to_observability_form`) and Modal Form (`to_modal_form`).
+  - Root Locus: calculate closed-loop pole trajectories under varying gain (`root_locus`).
+  - Frequency response data: Bode (`bode_data`) and Nyquist (`nyquist_data`) data generators.
+  - Discrete-to-Continuous time conversion (`to_continuous` / D2C) using matrix logarithm.
+  - Anti-windup PID controller: PID controller with actuator saturation limits and clamping anti-windup (`PIDController`).
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -452,6 +457,52 @@ t_out, x_out, y_out = sys.lsim(u, t)
 Compute optimal PID controller parameters ($K_p$, $K_i$, $K_d$) from first-order plus dead-time process parameters.
 ```crystal
 kp, ki, kd = CrySpace::Tuning.ziegler_nichols_fopdt(k_process, tau_process, theta_process)
+```
+
+#### M. State-Space Realizations (`to_observability_form` & `to_modal_form`)
+Convert a SISO system to Observability Canonical Form or any system to Modal (diagonalized) Form.
+```crystal
+# Convert to Observability Canonical Form
+sys_obs = sys.to_observability_form
+
+# Convert to Modal Canonical Form (decoupled diagonal state-space representation)
+sys_modal = sys.to_modal_form
+```
+
+#### N. Root Locus (`root_locus`)
+Calculate trajectories of closed-loop poles as the feedback gain $K$ varies from 0 to infinity.
+```crystal
+gains = [0.0, 0.5, 1.0, 2.0, 5.0, 10.0].to_tensor
+poles_matrix = sys.root_locus(gains)
+```
+
+#### O. Anti-Windup PID Controller (`PIDController`)
+A standard PID controller with actuator saturation limits and clamping anti-windup to prevent integral windup.
+```crystal
+u_min, u_max = -10.0, 10.0
+pid = CrySpace::PIDController.new(kp: 4.0, ki: 12.0, kd: 0.5, tf: 0.01, u_min: u_min, u_max: u_max)
+
+# In your simulation/control loop:
+u = pid.update(error, dt)
+```
+
+#### P. Bode & Nyquist Frequency Data (`bode_data` & `nyquist_data`)
+Generate frequency response data for Bode plots (dB magnitude and degrees phase) and Nyquist plots (real and imaginary parts).
+```crystal
+omega = [0.1, 1.0, 5.0, 10.0, 100.0].to_tensor
+
+# Bode data: {frequencies, magnitudes_db, phases_deg}
+w_out, db, deg = sys.bode_data(omega)
+
+# Nyquist data: {real_parts, imag_parts}
+real_parts, imag_parts = sys.nyquist_data(omega)
+```
+
+#### Q. Discrete-to-Continuous Conversion (`to_continuous`)
+Convert a discrete-time system back to continuous-time using the robust state-space matrix logarithm method.
+```crystal
+# sys_discrete has a defined sampling time dt
+sys_continuous = sys_discrete.to_continuous
 ```
 
 
