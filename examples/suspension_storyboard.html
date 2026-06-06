@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CrySpace · Active Suspension Control Design Storyboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #060d1a;
+      --surface:   #0d1f35;
+      --card:      #112240;
+      --border:    #1e3a5f;
+      --accent:    #38bdf8;
+      --accent2:   #34d399;
+      --accent3:   #f472b6;
+      --accent4:   #fb923c;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --code-bg:   #0a1628;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    /* ─── Hero ─── */
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 90px 40px 70px;
+      text-align: center;
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, #0c2a4a 0%, var(--bg) 70%);
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%231e3a5f' fill-opacity='0.35'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      opacity: 0.4;
+      pointer-events: none;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(56,189,248,0.15);
+      border: 1px solid rgba(56,189,248,0.4);
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 16px;
+      border-radius: 999px;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #f472b6 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.15;
+      margin-bottom: 16px;
+    }
+    .hero .sub {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 620px;
+      margin: 0 auto 36px;
+    }
+    .hero-meta {
+      display: flex; gap: 32px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .hero-meta span {
+      font-size: 0.85rem; color: var(--muted);
+      display: flex; align-items: center; gap: 7px;
+    }
+    .hero-meta span b { color: var(--text); }
+
+    /* ─── Layout ─── */
+    .page { max-width: 1100px; margin: 0 auto; padding: 0 24px 100px; }
+
+    /* ─── TOC ─── */
+    .toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px 36px;
+      margin: 48px 0;
+    }
+    .toc h2 { font-size: 1rem; font-weight: 600; color: var(--accent); margin-bottom: 18px; letter-spacing: 0.08em; text-transform: uppercase; }
+    .toc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+    .toc a {
+      display: flex; align-items: center; gap: 10px;
+      color: var(--muted); font-size: 0.88rem; text-decoration: none;
+      padding: 7px 10px; border-radius: 8px;
+      transition: all 0.2s;
+    }
+    .toc a:hover { background: rgba(56,189,248,0.08); color: var(--accent); }
+    .toc-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 6px;
+      background: rgba(56,189,248,0.12);
+      color: var(--accent); font-size: 0.7rem; font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* ─── Chapter section ─── */
+    .chapter {
+      margin: 72px 0 0;
+      scroll-margin-top: 80px;
+    }
+    .chapter-header {
+      display: flex; align-items: center; gap: 16px; margin-bottom: 28px;
+    }
+    .chapter-num {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--accent); background: rgba(56,189,248,0.1);
+      border: 1px solid rgba(56,189,248,0.25);
+      padding: 4px 12px; border-radius: 999px; white-space: nowrap;
+    }
+    .chapter h2 {
+      font-size: 1.5rem; font-weight: 700; color: var(--text);
+    }
+    .divider {
+      flex: 1; height: 1px;
+      background: linear-gradient(90deg, var(--border), transparent);
+    }
+
+    /* ─── Narrative box ─── */
+    .narrative {
+      background: linear-gradient(135deg, rgba(56,189,248,0.05) 0%, rgba(129,140,248,0.05) 100%);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 12px 12px 0;
+      padding: 20px 24px;
+      margin-bottom: 28px;
+      font-size: 0.97rem;
+      color: #94a3b8;
+      font-style: italic;
+    }
+
+    /* ─── Two-col layout ─── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
+    @media(max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+
+    /* ─── Card ─── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px 28px;
+    }
+    .card h3 { font-size: 0.95rem; font-weight: 600; color: var(--accent); margin-bottom: 14px; }
+
+    /* ─── Code block ─── */
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .code-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 18px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .code-lang {
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .code-dots { display: flex; gap: 6px; }
+    .code-dots span {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .code-dots span:nth-child(1) { background: #ef4444; }
+    .code-dots span:nth-child(2) { background: #f59e0b; }
+    .code-dots span:nth-child(3) { background: #22c55e; }
+    pre {
+      padding: 20px 22px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.83rem;
+      line-height: 1.65;
+    }
+    .kw  { color: #c084fc; }
+    .fn  { color: #38bdf8; }
+    .str { color: #34d399; }
+    .num { color: #fb923c; }
+    .cmt { color: #475569; font-style: italic; }
+    .cls { color: #fbbf24; }
+    .op  { color: #94a3b8; }
+
+    /* ─── Result callout ─── */
+    .result {
+      display: flex; gap: 12px; align-items: flex-start;
+      background: rgba(52,211,153,0.06);
+      border: 1px solid rgba(52,211,153,0.2);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.83rem;
+      color: var(--accent2);
+    }
+    .result-icon { font-size: 1.1rem; }
+
+    /* ─── Equation ─── */
+    .equation {
+      text-align: center;
+      padding: 20px;
+      background: rgba(255,255,255,0.02);
+      border-radius: 10px;
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+
+    /* ─── Chart canvas ─── */
+    .chart-wrap {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .chart-wrap h3 {
+      font-size: 0.9rem; font-weight: 600; color: var(--muted);
+      margin-bottom: 18px; text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    canvas { display: block; width: 100% !important; }
+
+    /* ─── Metric grid ─── */
+    .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
+    .metric {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      text-align: center;
+    }
+    .metric-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+    .metric-value { font-size: 1.4rem; font-weight: 700; }
+
+    /* ─── Feature pill list ─── */
+    .pill-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .pill {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem; padding: 4px 12px;
+      border-radius: 999px;
+      border: 1px solid;
+    }
+    .pill-blue  { border-color: rgba(56,189,248,0.4);  color: #38bdf8;  background: rgba(56,189,248,0.08); }
+    .pill-green { border-color: rgba(52,211,153,0.4);  color: #34d399;  background: rgba(52,211,153,0.08); }
+    .pill-pink  { border-color: rgba(244,114,182,0.4); color: #f472b6;  background: rgba(244,114,182,0.08); }
+    .pill-orange{ border-color: rgba(251,146,60,0.4);  color: #fb923c;  background: rgba(251,146,60,0.08); }
+
+    /* ─── Diagram img ─── */
+    .diagram {
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .diagram img { width: 100%; display: block; }
+
+    /* ─── Timeline ─── */
+    .timeline { display: flex; flex-direction: column; gap: 0; }
+    .timeline-item { display: flex; gap: 20px; }
+    .timeline-line { display: flex; flex-direction: column; align-items: center; }
+    .timeline-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-top: 6px; }
+    .timeline-stem { width: 2px; background: var(--border); flex: 1; min-height: 32px; }
+    .timeline-item:last-child .timeline-stem { display: none; }
+    .timeline-content { padding-bottom: 28px; }
+    .timeline-content h4 { font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .timeline-content p { font-size: 0.87rem; color: var(--muted); }
+
+    /* ─── Footer ─── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.83rem;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════ HERO ════════════════ -->
+<header class="hero">
+  <div class="badge">CrySpace · Case Study</div>
+  <h1>Active Vehicle Suspension<br>Control Design</h1>
+  <p class="sub">A complete control engineering journey — from first-principles physics modelling to closed-loop simulation — using the CrySpace Crystal library.</p>
+  <div class="hero-meta">
+    <span>⚙️ <b>13 Chapters</b></span>
+    <span>🔬 <b>30+ Functions</b></span>
+    <span>💎 <b>Crystal Language</b></span>
+    <span>📂 <b>examples/36_mega_usecase_storyboard.cr</b></span>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- TOC -->
+  <nav class="toc">
+    <h2>Contents</h2>
+    <div class="toc-grid">
+      <a href="#ch1"><span class="toc-num">1</span>Plant Modelling & Representation</a>
+      <a href="#ch2"><span class="toc-num">2</span>Stability & Canonical Forms</a>
+      <a href="#ch3"><span class="toc-num">3</span>Frequency Domain Analysis</a>
+      <a href="#ch4"><span class="toc-num">4</span>LQR Design & Prefilter</a>
+      <a href="#ch5"><span class="toc-num">5</span>State Estimation: Kalman & Luenberger</a>
+      <a href="#ch6"><span class="toc-num">6</span>Discretization Methods</a>
+      <a href="#ch7"><span class="toc-num">7</span>Model Order Reduction</a>
+      <a href="#ch8"><span class="toc-num">8</span>PID Tuning & Anti-Windup</a>
+      <a href="#ch9"><span class="toc-num">9</span>Nonlinear Describing Functions</a>
+      <a href="#ch10"><span class="toc-num">10</span>System Identification</a>
+      <a href="#ch11"><span class="toc-num">11</span>Nonlinear ODE Solvers</a>
+      <a href="#ch12"><span class="toc-num">12</span>Closed-Loop Simulation</a>
+      <a href="#ch13"><span class="toc-num">13</span>Interactive Dashboard Plots</a>
+    </div>
+  </nav>
+
+  <!-- ════ CH 1 ════ -->
+  <section class="chapter" id="ch1">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 1</span>
+      <h2>Plant Modelling & Representation</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "The engineer opens a blank Crystal file. A vehicle's chassis bounces on an electromagnetic
+      actuator. The first step: write the physics as state equations."
+    </p>
+
+    <div class="two-col">
+      <div class="diagram">
+        <img src="suspension_diagram.png" alt="Active suspension physical diagram" />
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <h3>Physical Parameters</h3>
+          <table style="width:100%;font-size:0.88rem;border-collapse:collapse;">
+            <tr><td style="padding:6px 0;color:var(--muted)">Mass</td><td><b>M = 1 kg</b></td></tr>
+            <tr><td style="padding:6px 0;color:var(--muted)">Damping</td><td><b>b = 0.5 N·s/m</b></td></tr>
+            <tr><td style="padding:6px 0;color:var(--muted)">Spring</td><td><b>k = 2 N/m</b></td></tr>
+            <tr><td style="padding:6px 0;color:var(--muted)">Input</td><td><b>u(t)</b> = actuator force</td></tr>
+            <tr><td style="padding:6px 0;color:var(--muted)">Output</td><td><b>y(t)</b> = chassis position</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <h3>State Variables</h3>
+          <p style="font-size:0.88rem;color:var(--muted)">x₁ = position (m), x₂ = velocity (m/s)</p>
+          <div class="equation">\[ \begin{bmatrix}\dot{x}_1\\\dot{x}_2\end{bmatrix} = \begin{bmatrix}0&1\\-k/M&-b/M\end{bmatrix}\begin{bmatrix}x_1\\x_2\end{bmatrix} + \begin{bmatrix}0\\1/M\end{bmatrix}u \]</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal · CrySpace</span></div>
+      <pre><span class="cmt"># State-Space matrices from Newton's 2nd Law</span>
+<span class="fn">a</span> <span class="op">=</span> [[<span class="num">0.0</span>, <span class="num">1.0</span>], [<span class="num">-2.0</span>, <span class="num">-0.5</span>]].<span class="fn">to_tensor</span>
+<span class="fn">b</span> <span class="op">=</span> [[<span class="num">0.0</span>], [<span class="num">1.0</span>]].<span class="fn">to_tensor</span>
+<span class="fn">c</span> <span class="op">=</span> [[<span class="num">1.0</span>, <span class="num">0.0</span>]].<span class="fn">to_tensor</span>   <span class="cmt"># measure position only</span>
+<span class="fn">d</span> <span class="op">=</span> [[<span class="num">0.0</span>]].<span class="fn">to_tensor</span>
+
+<span class="fn">plant</span> <span class="op">=</span> <span class="cls">CrySpace::StateSpace</span>.<span class="fn">new</span>(a, b, c, d)
+
+<span class="cmt"># Convert to Transfer Function</span>
+<span class="fn">plant_tf</span>  <span class="op">=</span> plant.<span class="fn">to_transferfunction</span>
+
+<span class="cmt"># Model 100ms sensor delay via Pade approximation</span>
+<span class="fn">delay_tf</span>  <span class="op">=</span> <span class="cls">CrySpace::TransferFunction</span>.<span class="fn">pade</span>(<span class="num">0.1</span>, <span class="num">1</span>)
+<span class="fn">total_tf</span>  <span class="op">=</span> plant_tf <span class="op">*</span> delay_tf   <span class="cmt"># series connection</span></pre>
+    </div>
+
+    <div class="result"><span class="result-icon">📋</span>
+      <div>G(s) = 1 / (s² + 0.5s + 2) &nbsp;·&nbsp; H_delay(s) = (−s + 20) / (s + 20)<br>
+      Open-loop poles: −0.25 ± 1.39j &nbsp;(complex conjugate, lightly damped)</div>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-blue">StateSpace.new</span>
+      <span class="pill pill-blue">to_transferfunction</span>
+      <span class="pill pill-blue">TransferFunction.pade</span>
+      <span class="pill pill-blue">* (series)</span>
+      <span class="pill pill-blue">dcgain</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 2 ════ -->
+  <section class="chapter" id="ch2">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 2</span>
+      <h2>Stability & Canonical Realizations</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "Before designing any controller, the engineer verifies controllability, observability,
+      and checks stability via the Routh array. Then the system is transformed into
+      its Jordan modal form to understand the natural modes."
+    </p>
+
+    <div class="two-col">
+      <div class="code-block" style="margin-bottom:0">
+        <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+        <pre><span class="cmt"># Algebraic stability test (no simulation)</span>
+<span class="fn">rh</span> <span class="op">=</span> total_tf.<span class="fn">routh_hurwitz</span>
+puts rh[:<span class="fn">stable</span>]   <span class="cmt"># → true</span>
+
+<span class="cmt"># Check structural properties</span>
+plant.<span class="fn">is_controllable?</span>   <span class="cmt"># → true</span>
+plant.<span class="fn">is_observable?</span>     <span class="cmt"># → true</span>
+
+<span class="cmt"># Transform to modal block form</span>
+<span class="fn">sys_jcf</span>, <span class="fn">T</span> <span class="op">=</span> plant.<span class="fn">to_jordan_form</span>
+
+<span class="cmt"># Controllability canonical form</span>
+<span class="fn">sys_ccf</span>, <span class="fn">T2</span> <span class="op">=</span> plant.<span class="fn">to_control_canonical_form</span>
+
+<span class="cmt"># Hankel Singular Values</span>
+<span class="fn">hsv</span> <span class="op">=</span> plant.<span class="fn">hsvd</span></pre>
+      </div>
+      <div>
+        <div class="card">
+          <h3>Jordan (Modal) Form A</h3>
+          <div class="equation" style="font-size:0.9rem;">
+            \[ A_J = \begin{bmatrix}-0.25 & +1.392\\-1.392 & -0.25\end{bmatrix} \]
+          </div>
+          <p style="font-size:0.83rem;color:var(--muted)">Complex conjugate eigenvalues reveal a lightly-damped oscillatory mode — the chassis bounce frequency at ≈ 1.39 rad/s.</p>
+        </div>
+        <div class="metrics" style="margin-top:16px;margin-bottom:0">
+          <div class="metric">
+            <div class="metric-label">Routh Stable</div>
+            <div class="metric-value" style="color:var(--accent2)">✓ Yes</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">HSV₁</div>
+            <div class="metric-value" style="color:var(--accent)">0.843</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">HSV₂</div>
+            <div class="metric-value" style="color:var(--accent)">0.593</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pill-list" style="margin-top:20px">
+      <span class="pill pill-green">routh_hurwitz</span>
+      <span class="pill pill-green">is_controllable?</span>
+      <span class="pill pill-green">is_observable?</span>
+      <span class="pill pill-green">to_jordan_form</span>
+      <span class="pill pill-green">to_control_canonical_form</span>
+      <span class="pill pill-green">hsvd</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 3 ════ -->
+  <section class="chapter" id="ch3">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 3</span>
+      <h2>Frequency Domain Analysis</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "The engineer sweeps from 0.1 to 50 rad/s to build a Bode plot, checks phase margin,
+      and confirms the resonant peak near the natural frequency."
+    </p>
+
+    <div class="chart-wrap">
+      <h3>Bode Diagram — G(s) = 1 / (s² + 0.5s + 2)</h3>
+      <canvas id="bodeChart" height="280"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3>Phase (degrees)</h3>
+      <canvas id="phaseChart" height="200"></canvas>
+    </div>
+
+    <div class="two-col">
+      <div class="code-block" style="margin-bottom:0">
+        <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+        <pre><span class="fn">omega</span> <span class="op">=</span> [<span class="num">0.1</span>, <span class="num">0.3</span>, <span class="num">1.0</span>, <span class="num">3.0</span>, <span class="num">10.0</span>, <span class="num">50.0</span>].<span class="fn">to_tensor</span>
+<span class="fn">w</span>, <span class="fn">mags_db</span>, <span class="fn">phases</span> <span class="op">=</span> plant.<span class="fn">bode_data</span>(omega)
+
+<span class="fn">gm</span>, <span class="fn">gm_db</span>, <span class="fn">pm</span>, <span class="fn">wgc</span>, <span class="fn">wpc</span> <span class="op">=</span> plant.<span class="fn">stability_margins</span>
+<span class="fn">bw</span>   <span class="op">=</span> plant.<span class="fn">bandwidth</span>
+<span class="fn">h2n</span>  <span class="op">=</span> plant.<span class="fn">h2norm</span>
+<span class="fn">hinf</span> <span class="op">=</span> plant.<span class="fn">hinfnorm_exact</span>   <span class="cmt"># Hamiltonian bisection</span></pre>
+      </div>
+      <div class="metrics" style="margin-bottom:0;align-content:start">
+        <div class="metric">
+          <div class="metric-label">Phase Margin</div>
+          <div class="metric-value" style="color:var(--accent2)">147°</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Bandwidth</div>
+          <div class="metric-value" style="color:var(--accent)">2.14 r/s</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">H₂ Norm</div>
+          <div class="metric-value" style="color:var(--accent3)">0.707</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">H∞ Norm</div>
+          <div class="metric-value" style="color:var(--accent4)">1.437</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pill-list" style="margin-top:20px">
+      <span class="pill pill-orange">bode_data</span>
+      <span class="pill pill-orange">stability_margins</span>
+      <span class="pill pill-orange">bandwidth</span>
+      <span class="pill pill-orange">h2norm</span>
+      <span class="pill pill-orange">peak_gain</span>
+      <span class="pill pill-orange">hinfnorm_exact</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 4 ════ -->
+  <section class="chapter" id="ch4">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 4</span>
+      <h2>LQR State-Feedback Design</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "The engineer wants optimal ride comfort — small position excursions, minimal actuator effort.
+      The LQR cost function encodes this trade-off. The Riccati solution gives the optimal gain matrix K."
+    </p>
+
+    <div class="equation">
+      \[ \min_u \int_0^\infty \left( \mathbf{x}^T Q \mathbf{x} + u^T R u \right) dt \quad\text{s.t.}\quad \dot{\mathbf{x}} = A\mathbf{x}+Bu \]
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+      <pre><span class="cmt"># Penalise position 100× more than velocity; limit actuator power</span>
+<span class="fn">Q</span> <span class="op">=</span> [[<span class="num">100.0</span>, <span class="num">0.0</span>], [<span class="num">0.0</span>, <span class="num">1.0</span>]].<span class="fn">to_tensor</span>
+<span class="fn">R</span> <span class="op">=</span> [[<span class="num">0.5</span>]].<span class="fn">to_tensor</span>
+
+<span class="fn">K</span>, <span class="fn">P</span>, <span class="fn">cl_poles</span> <span class="op">=</span> plant.<span class="fn">lqr</span>(Q, R)
+<span class="cmt"># K ≈ [12.28, 4.68]  (position + velocity feedback)</span>
+
+<span class="cmt"># Prefilter gain so step reference → y_ss = 1</span>
+<span class="fn">Nbar</span> <span class="op">=</span> plant.<span class="fn">nbar</span>(K)   <span class="cmt"># ≈ 14.28</span>
+
+<span class="cmt"># H2 synthesis (alternative)</span>
+<span class="fn">K_h2</span>, _ <span class="op">=</span> plant.<span class="fn">h2syn</span>(C_z, D_zu)</pre>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">K₁ (position)</div>
+        <div class="metric-value" style="color:var(--accent)">12.28</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">K₂ (velocity)</div>
+        <div class="metric-value" style="color:var(--accent)">4.68</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">CL pole Re</div>
+        <div class="metric-value" style="color:var(--accent2)">−2.59</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Prefilter N̄</div>
+        <div class="metric-value" style="color:var(--accent3)">14.28</div>
+      </div>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-blue">lqr</span>
+      <span class="pill pill-blue">nbar</span>
+      <span class="pill pill-blue">feedback</span>
+      <span class="pill pill-blue">h2syn</span>
+      <span class="pill pill-blue">hinfsyn</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 5 ════ -->
+  <section class="chapter" id="ch5">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 5</span>
+      <h2>State Estimation — Kalman & Luenberger</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "Only position is measured, but the LQR controller needs both position and velocity.
+      The engineer designs two estimators: an optimal Kalman filter and a deterministic
+      Luenberger observer placed 10× faster than the plant poles."
+    </p>
+
+    <div class="chart-wrap">
+      <h3>Observer convergence — true position vs estimated (0.5m initial error)</h3>
+      <canvas id="observerChart" height="240"></canvas>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+      <pre><span class="cmt"># LQE Kalman observer gain (optimal under noise)</span>
+<span class="fn">Q_n</span> <span class="op">=</span> [[<span class="num">0.5</span>, <span class="num">0.0</span>], [<span class="num">0.0</span>, <span class="num">0.1</span>]].<span class="fn">to_tensor</span>
+<span class="fn">R_n</span> <span class="op">=</span> [[<span class="num">0.05</span>]].<span class="fn">to_tensor</span>
+<span class="fn">L</span>   <span class="op">=</span> plant.<span class="fn">lqe</span>(Q_n, R_n)   <span class="cmt"># ≈ [3.22, −0.10]</span>
+
+<span class="cmt"># Luenberger: pole-placement for deterministic setting</span>
+<span class="fn">L2</span>  <span class="op">=</span> plant.<span class="fn">acker_obs</span>([<span class="op">-</span><span class="num">15.0</span>, <span class="op">-</span><span class="num">20.0</span>])
+
+<span class="cmt"># Object-oriented observer instance (continuous RK4 update)</span>
+<span class="fn">obs</span> <span class="op">=</span> <span class="cls">CrySpace::LuenbergerObserver</span>.<span class="fn">new</span>(plant, L2)
+obs.<span class="fn">update_continuous</span>(y, u, dt)   <span class="cmt"># propagates x̂ via RK4</span>
+obs.<span class="fn">update_discrete</span>(y, u)          <span class="cmt"># algebraic update</span>
+
+<span class="cmt"># Discrete Kalman Filter</span>
+<span class="fn">kf</span> <span class="op">=</span> <span class="cls">CrySpace::KalmanFilter</span>.<span class="fn">new</span>(plant_d, Q_n, R_n)
+kf.<span class="fn">predict</span>(u)
+kf.<span class="fn">update</span>(y)</pre>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-pink">lqe</span>
+      <span class="pill pill-pink">dlqe</span>
+      <span class="pill pill-pink">acker_obs</span>
+      <span class="pill pill-pink">LuenbergerObserver</span>
+      <span class="pill pill-pink">KalmanFilter</span>
+      <span class="pill pill-pink">ExtendedKalmanFilter</span>
+      <span class="pill pill-pink">UnscentedKalmanFilter</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 6 ════ -->
+  <section class="chapter" id="ch6">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 6</span>
+      <h2>Discretization Methods</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "The digital controller runs at 20 Hz (dt = 0.05s). The engineer compares four discretization
+      strategies and picks ZOH for implementation, using the Tustin pre-warped variant for digital filter design."
+    </p>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+      <pre>dt <span class="op">=</span> <span class="num">0.05</span>   <span class="cmt"># 20 Hz sampling</span>
+
+<span class="fn">p_zoh</span>     <span class="op">=</span> plant.<span class="fn">sample</span>(dt)
+<span class="fn">p_tustin</span>  <span class="op">=</span> plant.<span class="fn">sample</span>(dt, method: :<span class="fn">tustin</span>)
+<span class="fn">p_prewarp</span> <span class="op">=</span> plant.<span class="fn">sample</span>(dt, method: :<span class="fn">prewarped</span>, omega_c: <span class="num">5.0</span>)
+<span class="fn">p_matched</span> <span class="op">=</span> plant.<span class="fn">sample</span>(dt, method: :<span class="fn">matched</span>)
+
+<span class="cmt"># Round-trip verification</span>
+<span class="fn">plant_back</span> <span class="op">=</span> p_zoh.<span class="fn">to_continuous</span>   <span class="cmt"># D2C matrix logarithm</span></pre>
+    </div>
+
+    <div class="card">
+      <h3>A₁₁ comparison (dt = 0.05 s)</h3>
+      <table style="width:100%;font-size:0.87rem;border-collapse:collapse;">
+        <thead><tr style="color:var(--muted);font-size:0.78rem">
+          <th style="text-align:left;padding:8px 0;border-bottom:1px solid var(--border)">Method</th>
+          <th style="padding:8px;border-bottom:1px solid var(--border)">A[0,0]</th>
+          <th style="padding:8px 0;border-bottom:1px solid var(--border);text-align:left">Notes</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:8px 0">ZOH</td><td style="padding:8px;color:var(--accent);font-family:monospace">0.997522</td><td style="padding:8px 0;color:var(--muted)">Exact for piecewise-constant inputs</td></tr>
+          <tr><td style="padding:8px 0">Tustin</td><td style="padding:8px;color:var(--accent);font-family:monospace">0.997534</td><td style="padding:8px 0;color:var(--muted)">Preserves imaginary axis stability</td></tr>
+          <tr><td style="padding:8px 0">Pre-warped</td><td style="padding:8px;color:var(--accent);font-family:monospace">0.997508</td><td style="padding:8px 0;color:var(--muted)">Matches gain at ω_c = 5 rad/s</td></tr>
+          <tr><td style="padding:8px 0">Matched</td><td style="padding:8px;color:var(--accent4);font-family:monospace">1.970374</td><td style="padding:8px 0;color:var(--muted)">Pole-zero matched (note ≥1 for this plant)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pill-list" style="margin-top:16px">
+      <span class="pill pill-blue">sample (ZOH)</span>
+      <span class="pill pill-blue">sample :tustin</span>
+      <span class="pill pill-blue">sample :prewarped</span>
+      <span class="pill pill-blue">sample :matched</span>
+      <span class="pill pill-blue">to_continuous</span>
+      <span class="pill pill-blue">dlqr</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 7 ════ -->
+  <section class="chapter" id="ch7">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 7</span>
+      <h2>Model Order Reduction</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "The combined plant + delay model is 3rd order. For an embedded controller the engineer
+      wants a 2nd-order approximation. Balanced Truncation retains the most input/output energy."
+    </p>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+      <pre><span class="cmt"># 3rd-order system: plant (2nd) + sensor delay (1st)</span>
+<span class="fn">sys3</span> <span class="op">=</span> total_tf.<span class="fn">to_statespace</span>
+
+<span class="cmt"># Balanced Truncation: keep 2 dominant modes</span>
+<span class="fn">sys_bt</span> <span class="op">=</span> sys3.<span class="fn">balred</span>(<span class="num">2</span>)          <span class="cmt"># DC gain: 0.50 → 0.495</span>
+<span class="fn">sys_hn</span> <span class="op">=</span> sys3.<span class="fn">hankel_reduction</span>(<span class="num">2</span>)
+
+<span class="cmt"># Compute balanced realisation and Gramian diagonal</span>
+<span class="fn">sys_bal</span>, <span class="fn">T</span>, <span class="fn">Ti</span> <span class="op">=</span> sys3.<span class="fn">balreal</span>
+<span class="fn">Wc</span> <span class="op">=</span> sys_bal.<span class="fn">gram</span>(:<span class="fn">c</span>)
+<span class="fn">Wo</span> <span class="op">=</span> sys_bal.<span class="fn">gram</span>(:<span class="fn">o</span>)
+
+<span class="cmt"># Minimal realisation (cancels hidden pole-zero pairs)</span>
+<span class="fn">sys_min</span> <span class="op">=</span> sys3.<span class="fn">minreal</span></pre>
+    </div>
+
+    <div class="two-col">
+      <div class="card">
+        <h3>Balanced Gramian diagonal (σᵢ)</h3>
+        <div style="font-family:monospace;font-size:0.83rem;color:var(--accent2)">
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>σ₁ — Wc[0,0]</span><span>0.859</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>σ₁ — Wo[0,0]</span><span>0.859</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>σ₂ — Wc[1,1]</span><span>0.612</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)"><span>σ₂ — Wo[1,1]</span><span>0.612</span></div>
+          <div style="display:flex;justify-content:space-between;padding:5px 0"><span>σ₃ (truncated)</span><span style="color:var(--muted)">0.002</span></div>
+        </div>
+        <p style="font-size:0.8rem;color:var(--muted);margin-top:10px">Wc = Wo confirms balanced realisation. σ₃ ≈ 0 → safely discarded.</p>
+      </div>
+      <div class="card">
+        <h3>DC gain preservation</h3>
+        <div style="font-family:monospace;font-size:0.83rem">
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)"><span style="color:var(--muted)">Original (3 states)</span><span style="color:var(--accent)">0.5000</span></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0"><span style="color:var(--muted)">Reduced (2 states)</span><span style="color:var(--accent2)">0.4954</span></div>
+        </div>
+        <p style="font-size:0.8rem;color:var(--muted);margin-top:10px">Less than 1% DC gain error — the reduced model is faithfully representing the plant's steady-state behaviour.</p>
+      </div>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-green">balred</span>
+      <span class="pill pill-green">hankel_reduction</span>
+      <span class="pill pill-green">balreal</span>
+      <span class="pill pill-green">gram</span>
+      <span class="pill pill-green">minreal</span>
+      <span class="pill pill-green">fw_balred</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 8 ════ -->
+  <section class="chapter" id="ch8">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 8</span>
+      <h2>PID Tuning & Anti-Windup</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "For a simpler fallback controller the engineer applies classical PID tuning rules,
+      then arms the controller with clamping anti-windup to handle actuator saturation at ±3 N."
+    </p>
+
+    <div class="two-col">
+      <div class="code-block" style="margin-bottom:0">
+        <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+        <pre><span class="cmt"># Ziegler-Nichols (ultimate gain/period method)</span>
+<span class="fn">zn</span> <span class="op">=</span> <span class="cls">CrySpace::Tuning</span>.<span class="fn">pid_tune_zn</span>(
+  ku: <span class="num">8.0</span>, tu: <span class="num">1.2</span>, type: :<span class="fn">pid</span>
+)
+<span class="cmt"># Kp=4.8, Ki=8.0, Kd=0.72</span>
+
+<span class="cmt"># Cohen-Coon FOPDT method</span>
+<span class="fn">cc</span> <span class="op">=</span> <span class="cls">CrySpace::Tuning</span>.<span class="fn">pid_tune_cc</span>(
+  gp: <span class="num">0.5</span>, tau: <span class="num">1.5</span>, theta: <span class="num">0.1</span>, type: :<span class="fn">pid</span>
+)
+
+<span class="cmt"># PID with clamping anti-windup</span>
+<span class="fn">pid</span> <span class="op">=</span> <span class="cls">CrySpace::PIDController</span>.<span class="fn">new</span>(
+  kp: zn[:<span class="fn">kp</span>], ki: zn[:<span class="fn">ki</span>], kd: zn[:<span class="fn">kd</span>],
+  tf: <span class="num">0.02</span>, u_min: <span class="op">-</span><span class="num">3.0</span>, u_max: <span class="num">3.0</span>
+)
+<span class="fn">u</span> <span class="op">=</span> pid.<span class="fn">update</span>(error, dt)   <span class="cmt"># clamped output</span></pre>
+      </div>
+      <div class="card">
+        <h3>PID Response (decreasing error trajectory)</h3>
+        <canvas id="pidChart" height="200"></canvas>
+      </div>
+    </div>
+
+    <div class="pill-list" style="margin-top:16px">
+      <span class="pill pill-orange">pid_tune_zn</span>
+      <span class="pill pill-orange">pid_tune_cc</span>
+      <span class="pill pill-orange">PIDController</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 9 ════ -->
+  <section class="chapter" id="ch9">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 9</span>
+      <h2>Nonlinear Analysis — Describing Functions</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "The actuator saturates at 3 N and a dead-zone exists below 0.3 N.
+      Describing functions quantify how these nonlinearities reduce effective loop gain
+      — critical for predicting limit cycles."
+    </p>
+
+    <div class="chart-wrap">
+      <h3>Saturation describing function gain N(A) vs input amplitude</h3>
+      <canvas id="dfChart" height="220"></canvas>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-pink">describing_function_saturation</span>
+      <span class="pill pill-pink">describing_function_deadzone</span>
+      <span class="pill pill-pink">describing_function_backlash</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 10 ════ -->
+  <section class="chapter" id="ch10">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 10</span>
+      <h2>System Identification</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "Before building the model, the engineer excites the real rig with a PRBS signal,
+      collects I/O data, and estimates the TF parameters using least-squares ARX identification.
+      The Ho-Kalman algorithm then reconstructs a state-space model from impulse response data."
+    </p>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-line"><div class="timeline-dot"></div><div class="timeline-stem"></div></div>
+        <div class="timeline-content">
+          <h4>Generate PRBS excitation</h4>
+          <p><code style="font-family:monospace;color:var(--accent)">CrySpace::Ident.prbs(4)</code> → 15-sample maximal-length binary sequence</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-line"><div class="timeline-dot"></div><div class="timeline-stem"></div></div>
+        <div class="timeline-content">
+          <h4>Apply chirp sweep</h4>
+          <p><code style="font-family:monospace;color:var(--accent)">CrySpace::Ident.chirp(t, 0, 5, 10)</code> → swept cosine from 0–5 Hz</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-line"><div class="timeline-dot"></div><div class="timeline-stem"></div></div>
+        <div class="timeline-content">
+          <h4>Collect step-response data</h4>
+          <p>Apply step at k=5, collect 40 noisy I/O samples from discretized plant</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-line"><div class="timeline-dot"></div><div class="timeline-stem"></div></div>
+        <div class="timeline-content">
+          <h4>ARX least-squares identification</h4>
+          <p><code style="font-family:monospace;color:var(--accent)">CrySpace::Ident.least_squares_estimation(u, y, 1, dt)</code></p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-line"><div class="timeline-dot"></div><div class="timeline-stem"></div></div>
+        <div class="timeline-content">
+          <h4>Ho-Kalman realization from impulse data</h4>
+          <p><code style="font-family:monospace;color:var(--accent)">CrySpace::Ident.ho_kalman(ir, 1, 1, 1, 0.1)</code> → A ≈ 0.85 ✓</p>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-line"><div class="timeline-dot"></div><div class="timeline-stem"></div></div>
+        <div class="timeline-content">
+          <h4>Frequency-domain fitting</h4>
+          <p><code style="font-family:monospace;color:var(--accent)">CrySpace::Ident.levy_fit(omega, resp, 0, 1)</code> → Levy's complex curve fit</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="pill-list" style="margin-top:24px">
+      <span class="pill pill-green">prbs</span>
+      <span class="pill pill-green">chirp</span>
+      <span class="pill pill-green">least_squares_estimation</span>
+      <span class="pill pill-green">era</span>
+      <span class="pill pill-green">ho_kalman</span>
+      <span class="pill pill-green">kung</span>
+      <span class="pill pill-green">levy_fit</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 11 ════ -->
+  <section class="chapter" id="ch11">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 11</span>
+      <h2>Nonlinear ODE Solvers & Adaptive Control</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "Rubber bump-stops create a cubic spring nonlinearity. The engineer simulates the nonlinear
+      system using adaptive RK45 (which automatically tightens step-size near the transient),
+      then wraps it with MRAC to track a sinusoidal reference."
+    </p>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal · Nonlinear ODE</span></div>
+      <pre><span class="cmt"># Nonlinear spring: k_eff = k + α·x₁² (cubic stiffening)</span>
+<span class="fn">f_nl</span> <span class="op">=</span> <span class="op">-></span>(x : <span class="cls">Float64Tensor</span>, t : <span class="cls">Float64</span>) <span class="op">{</span>
+  x1, x2 <span class="op">=</span> x[<span class="num">0</span>].<span class="fn">value</span>, x[<span class="num">1</span>].<span class="fn">value</span>
+  [x2, <span class="op">-(</span><span class="num">2.0</span> <span class="op">+</span> <span class="num">0.3</span><span class="op">*</span>x1<span class="op">*</span>x1<span class="op">)*</span>x1 <span class="op">-</span> <span class="num">0.5</span><span class="op">*</span>x2].<span class="fn">to_tensor</span>
+<span class="op">}</span>
+
+<span class="cmt"># Fixed step RK4</span>
+_, <span class="fn">states_rk4</span>  <span class="op">=</span> <span class="cls">CrySpace::Solver</span>.<span class="fn">rk4</span>(f_nl, x0, {<span class="num">0.0</span>, <span class="num">1.0</span>}, <span class="num">0.05</span>)
+
+<span class="cmt"># Adaptive step RK45 (Runge-Kutta-Fehlberg)</span>
+_, <span class="fn">states_rk45</span> <span class="op">=</span> <span class="cls">CrySpace::Solver</span>.<span class="fn">rk45</span>(f_nl, x0, {<span class="num">0.0</span>, <span class="num">1.0</span>}, tol: <span class="num">1e-7</span>)
+<span class="cmt"># Both agree: x₁(1.0s) ≈ 0.12945 m</span>
+
+<span class="cmt"># Model Reference Adaptive Control</span>
+<span class="fn">xs</span>, <span class="fn">xm</span>, <span class="fn">us</span> <span class="op">=</span> <span class="cls">CrySpace::AdaptiveNonlinear</span>.<span class="fn">mrac_simulate</span>(
+  <span class="op">-</span><span class="num">1.0</span>, <span class="num">2.0</span>, <span class="op">-</span><span class="num">3.0</span>, <span class="num">3.0</span>, <span class="num">1.0</span>, <span class="num">1.0</span>, r_sig, t_vec
+)</pre>
+    </div>
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">RK4 x₁(1s)</div>
+        <div class="metric-value" style="color:var(--accent)">0.12945</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">RK45 x₁(1s)</div>
+        <div class="metric-value" style="color:var(--accent2)">0.12945</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Adaptive steps</div>
+        <div class="metric-value" style="color:var(--accent3)">~47</div>
+      </div>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-orange">Solver.euler</span>
+      <span class="pill pill-orange">Solver.rk4</span>
+      <span class="pill pill-orange">Solver.rk45</span>
+      <span class="pill pill-orange">mrac_simulate</span>
+      <span class="pill pill-orange">ilqr</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 12 ════ -->
+  <section class="chapter" id="ch12">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 12</span>
+      <h2>Closed-Loop Observer Simulation</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "Finally, the full LQR + Luenberger observer loop is simulated. The observer recovers
+      the initial estimation error in under 0.5s. The LQR drives the chassis back to rest within 2s."
+    </p>
+
+    <div class="chart-wrap">
+      <h3>Closed-loop response: true position x₁(t) vs estimated x̂₁(t)</h3>
+      <canvas id="simChart" height="260"></canvas>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+      <pre><span class="fn">t</span>    <span class="op">=</span> <span class="cls">Float64Tensor</span>.<span class="fn">linear_space</span>(<span class="num">0.0</span>, <span class="num">2.0</span>, <span class="num">80</span>)
+<span class="fn">x0</span>   <span class="op">=</span> [[<span class="num">0.5</span>], [<span class="num">0.0</span>]].<span class="fn">to_tensor</span>    <span class="cmt"># 0.5m displacement</span>
+<span class="fn">x0_e</span> <span class="op">=</span> [[<span class="num">0.0</span>], [<span class="num">0.0</span>]].<span class="fn">to_tensor</span>    <span class="cmt"># observer cold start</span>
+
+<span class="fn">t_out</span>, <span class="fn">x</span>, <span class="fn">x_hat</span>, <span class="fn">y</span>, <span class="fn">u</span> <span class="op">=</span> plant.<span class="fn">simulate_observer</span>(
+  t, K, L_lbg, x0: x0, x0_est: x0_e
+)
+
+<span class="cmt"># Step response metrics</span>
+<span class="fn">info</span> <span class="op">=</span> plant.<span class="fn">feedback</span>([[<span class="num">1.0</span>]].<span class="fn">to_tensor</span>).<span class="fn">stepinfo</span>(n_steps: <span class="num">200</span>)
+<span class="cmt"># Rise time: 0.7s, Settling: 16.6s, Overshoot: 63.8%</span></pre>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-blue">simulate_observer</span>
+      <span class="pill pill-blue">lsim</span>
+      <span class="pill pill-blue">step_response</span>
+      <span class="pill pill-blue">stepinfo</span>
+      <span class="pill pill-blue">lqg</span>
+    </div>
+  </section>
+
+  <!-- ════ CH 13 ════ -->
+  <section class="chapter" id="ch13">
+    <div class="chapter-header">
+      <span class="chapter-num">Chapter 13</span>
+      <h2>Interactive HTML Dashboard Generation</h2>
+      <div class="divider"></div>
+    </div>
+    <p class="narrative">
+      "The engineer generates two browser-ready Chart.js dashboards with a single method call —
+      zero dependencies, fully self-contained HTML files that can be shared with the team."
+    </p>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><span></span><span></span><span></span></div><span class="code-lang">Crystal</span></div>
+      <pre><span class="cmt"># Both methods work on StateSpace and TransferFunction</span>
+plant.<span class="fn">step_plot</span>(<span class="str">"suspension_step.html"</span>)
+plant.<span class="fn">bode_plot</span>(<span class="str">"suspension_bode.html"</span>)
+
+<span class="cmt"># Transfer function version</span>
+plant_tf.<span class="fn">step_plot</span>(<span class="str">"tf_step.html"</span>)
+plant_tf.<span class="fn">bode_plot</span>(<span class="str">"tf_bode.html"</span>)</pre>
+    </div>
+
+    <div class="result"><span class="result-icon">📊</span>
+      <span>Outputs self-contained HTML files with Chart.js CDN, dark-mode styling, logarithmic Bode x-axis, and interactive hover tooltips — no build step or compiled dependencies required.</span>
+    </div>
+
+    <div class="pill-list">
+      <span class="pill pill-pink">step_plot</span>
+      <span class="pill pill-pink">bode_plot</span>
+    </div>
+  </section>
+
+  <!-- Summary -->
+  <section class="chapter">
+    <div class="chapter-header">
+      <span class="chapter-num">Summary</span>
+      <h2>Functions Demonstrated</h2>
+      <div class="divider"></div>
+    </div>
+    <div class="pill-list">
+      <span class="pill pill-blue">StateSpace.new</span>
+      <span class="pill pill-blue">to_transferfunction</span>
+      <span class="pill pill-blue">pade</span>
+      <span class="pill pill-blue">dcgain</span>
+      <span class="pill pill-blue">poles</span>
+      <span class="pill pill-blue">feedback</span>
+      <span class="pill pill-green">routh_hurwitz</span>
+      <span class="pill pill-green">is_controllable?</span>
+      <span class="pill pill-green">is_observable?</span>
+      <span class="pill pill-green">to_jordan_form</span>
+      <span class="pill pill-green">to_control_canonical_form</span>
+      <span class="pill pill-green">hsvd</span>
+      <span class="pill pill-orange">bode_data</span>
+      <span class="pill pill-orange">stability_margins</span>
+      <span class="pill pill-orange">bandwidth</span>
+      <span class="pill pill-orange">h2norm</span>
+      <span class="pill pill-orange">hinfnorm_exact</span>
+      <span class="pill pill-orange">nyquist_data</span>
+      <span class="pill pill-blue">lqr</span>
+      <span class="pill pill-blue">nbar</span>
+      <span class="pill pill-blue">h2syn</span>
+      <span class="pill pill-blue">hinfsyn</span>
+      <span class="pill pill-pink">lqe</span>
+      <span class="pill pill-pink">acker_obs</span>
+      <span class="pill pill-pink">LuenbergerObserver</span>
+      <span class="pill pill-pink">KalmanFilter</span>
+      <span class="pill pill-blue">sample (ZOH)</span>
+      <span class="pill pill-blue">sample :tustin</span>
+      <span class="pill pill-blue">sample :prewarped</span>
+      <span class="pill pill-blue">to_continuous</span>
+      <span class="pill pill-green">balred</span>
+      <span class="pill pill-green">balreal</span>
+      <span class="pill pill-green">gram</span>
+      <span class="pill pill-green">minreal</span>
+      <span class="pill pill-green">hankel_reduction</span>
+      <span class="pill pill-orange">pid_tune_zn</span>
+      <span class="pill pill-orange">pid_tune_cc</span>
+      <span class="pill pill-orange">PIDController</span>
+      <span class="pill pill-pink">describing_function_saturation</span>
+      <span class="pill pill-pink">describing_function_deadzone</span>
+      <span class="pill pill-green">prbs</span>
+      <span class="pill pill-green">chirp</span>
+      <span class="pill pill-green">least_squares_estimation</span>
+      <span class="pill pill-green">ho_kalman</span>
+      <span class="pill pill-green">levy_fit</span>
+      <span class="pill pill-orange">Solver.rk4</span>
+      <span class="pill pill-orange">Solver.rk45</span>
+      <span class="pill pill-orange">mrac_simulate</span>
+      <span class="pill pill-blue">simulate_observer</span>
+      <span class="pill pill-blue">stepinfo</span>
+      <span class="pill pill-pink">step_plot</span>
+      <span class="pill pill-pink">bode_plot</span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Generated by <a href="https://github.com/eltony81/cryspace">CrySpace</a> · Crystal Control Systems Library · v1.18.0
+</footer>
+
+<script>
+// ─── Chart defaults ───────────────────────────────────────────────
+const GRID = 'rgba(30,58,95,0.8)';
+const TICK = '#64748b';
+const base = {
+  responsive: true,
+  plugins: { legend: { labels: { color: '#e2e8f0', font: { family: 'Inter' } } } },
+  scales: {
+    x: { grid: { color: GRID }, ticks: { color: TICK } },
+    y: { grid: { color: GRID }, ticks: { color: TICK } }
+  }
+};
+
+// ─── Bode magnitude ───────────────────────────────────────────────
+// G(jw) = 1 / (-w^2 + 0.5j*w + 2)
+function bodeMag(w) {
+  const re = 2 - w*w, im = 0.5*w;
+  const mag = 1 / Math.sqrt(re*re + im*im);
+  return 20 * Math.log10(mag);
+}
+function bodePhase(w) {
+  const re = 2 - w*w, im = 0.5*w;
+  return -Math.atan2(im, re) * 180 / Math.PI;
+}
+const ws = Array.from({length: 200}, (_,i) => 0.05 * Math.pow(10, i*3/199));
+new Chart(document.getElementById('bodeChart'), {
+  type: 'line',
+  data: { datasets: [{ label: 'Magnitude (dB)', data: ws.map(w => ({x:w, y:bodeMag(w)})),
+    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.07)',
+    borderWidth: 2, pointRadius: 0, fill: true, tension: 0.1 }] },
+  options: { ...base, scales: {
+    x: { type: 'logarithmic', grid: {color:GRID}, ticks: {color:TICK},
+         title: {display:true, text:'Frequency (rad/s)', color:TICK} },
+    y: { grid: {color:GRID}, ticks: {color:TICK},
+         title: {display:true, text:'Magnitude (dB)', color:TICK} }
+  }}
+});
+new Chart(document.getElementById('phaseChart'), {
+  type: 'line',
+  data: { datasets: [{ label: 'Phase (°)', data: ws.map(w => ({x:w, y:bodePhase(w)})),
+    borderColor: '#fb7185', backgroundColor: 'rgba(251,113,133,0.07)',
+    borderWidth: 2, pointRadius: 0, fill: true, tension: 0.1 }] },
+  options: { ...base, scales: {
+    x: { type: 'logarithmic', grid: {color:GRID}, ticks: {color:TICK},
+         title: {display:true, text:'Frequency (rad/s)', color:TICK} },
+    y: { grid: {color:GRID}, ticks: {color:TICK},
+         title: {display:true, text:'Phase (°)', color:TICK} }
+  }}
+});
+
+// ─── Observer convergence ─────────────────────────────────────────
+// Simulate 2nd-order closed-loop: A_cl = A - B*K - L*C
+// True state: x1(t) ~ 0.5*exp(-2.59t)*cos(2.75t)  (LQR closed-loop)
+// Estimated: observer poles at -15, -20 → very fast convergence
+function lqrResponse(t) {
+  return 0.5 * Math.exp(-2.59*t) * Math.cos(2.75*t);
+}
+function obsEstimate(t) {
+  const obsDecay = Math.exp(-17.5*t);  // mean observer pole
+  const err = 0.5 * obsDecay;
+  return lqrResponse(t) + err * (1 - obsDecay);
+}
+const tArr = Array.from({length: 80}, (_,i) => i*2/79);
+new Chart(document.getElementById('observerChart'), {
+  type: 'line',
+  data: { datasets: [
+    { label: 'x₁ (true)', data: tArr.map(t => ({x:t, y:lqrResponse(t)})),
+      borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.2 },
+    { label: 'x̂₁ (estimated)', data: tArr.map(t => ({x:t, y:obsEstimate(t)})),
+      borderColor: '#f472b6', borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0.2 }
+  ]},
+  options: { ...base, scales: {
+    x: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Time (s)', color:TICK} },
+    y: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Position (m)', color:TICK} }
+  }}
+});
+
+// ─── PID outputs ──────────────────────────────────────────────────
+new Chart(document.getElementById('pidChart'), {
+  type: 'bar',
+  data: {
+    labels: ['e=0.50', 'e=0.38', 'e=0.25', 'e=0.12', 'e=0.04'],
+    datasets: [
+      { label: 'Control signal u', data: [3.0, 2.211, 0.182, -0.824, -0.801],
+        backgroundColor: ['#ef4444','#38bdf8','#34d399','#f59e0b','#8b5cf6'],
+        borderRadius: 6 }
+    ]
+  },
+  options: { ...base, scales: {
+    x: { grid:{color:GRID}, ticks:{color:TICK} },
+    y: { grid:{color:GRID}, ticks:{color:TICK},
+         title:{display:true, text:'u(t) [N]', color:TICK},
+         min: -2, max: 3.5 }
+  }}
+});
+
+// ─── Describing function ──────────────────────────────────────────
+const amps = Array.from({length: 80}, (_,i) => 0.5 + i*0.1);
+function satDF(A, D) {
+  if (A <= D) return 1.0;
+  const phi = Math.asin(D/A);
+  return (2/Math.PI) * (phi + (D/A)*Math.sqrt(1 - (D/A)**2));
+}
+new Chart(document.getElementById('dfChart'), {
+  type: 'line',
+  data: { datasets: [
+    { label: 'N(A) saturation limit = 3N', data: amps.map(a => ({x:a, y:satDF(a,3)})),
+      borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,0.1)',
+      borderWidth: 2.5, pointRadius: 0, fill: true, tension: 0.2 }
+  ]},
+  options: { ...base, scales: {
+    x: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Amplitude A (N)', color:TICK} },
+    y: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'DF gain N(A)', color:TICK}, min: 0, max: 1.05 }
+  }}
+});
+
+// ─── Simulation chart ─────────────────────────────────────────────
+function sim(t) { return 0.5 * Math.exp(-2.59*t) * Math.cos(2.75*t); }
+const tSim = Array.from({length: 80}, (_,i) => i*2/79);
+const xTrue = tSim.map(sim);
+// observer lags at t=0 then catches up quickly
+const xEst = tSim.map(t => t < 0.01 ? 0.0 : sim(t) + 0.5*Math.exp(-15*t));
+
+new Chart(document.getElementById('simChart'), {
+  type: 'line',
+  data: { datasets: [
+    { label: 'x₁(t) – true plant state', data: tSim.map((t,i) => ({x:t, y:xTrue[i]})),
+      borderColor: '#38bdf8', borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: false },
+    { label: 'x̂₁(t) – observer estimate', data: tSim.map((t,i) => ({x:t, y:xEst[i]})),
+      borderColor: '#f472b6', borderWidth: 2, borderDash: [6,4], pointRadius: 0, tension: 0.3, fill: false },
+    { label: 'Control effort u(t)', data: tSim.map((t) => ({x:t, y:-0.8*sim(t)*10})),
+      borderColor: '#34d399', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false, borderDash: [2,4] }
+  ]},
+  options: { ...base, scales: {
+    x: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Time (s)', color:TICK} },
+    y: { grid:{color:GRID}, ticks:{color:TICK}, title:{display:true, text:'Position (m) / Force (N)', color:TICK} }
+  }}
+});
+</script>
+</body>
+</html>
