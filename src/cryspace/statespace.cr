@@ -1,4 +1,6 @@
 require "num"
+require "./statespace_simulation"
+require "./statespace_analysis"
 
 module CrySpace
   class StateSpace
@@ -64,9 +66,6 @@ module CrySpace
 
     def feedback(other : StateSpace, sign = -1)
       # Closed loop system with feedback
-      # sys1 is self, sys2 is other
-      # negative feedback: y = sys1(u - sys2(y))
-      
       n1 = n_states
       n2 = other.n_states
       
@@ -95,7 +94,6 @@ module CrySpace
 
     def feedback(k : Float64Tensor, sign = -1)
       # feedback with static gain K
-      # E = inv(I + K * D)
       eye_k = Float64Tensor.identity(k.shape[0])
       e = (eye_k + k.matmul(@d)).inv
       
@@ -157,273 +155,6 @@ module CrySpace
       end
     end
 
-    def step_response(n_steps = 100)
-      sys = self
-      curr_dt = @dt
-      unless curr_dt && curr_dt > 0
-        sys = self.sample(0.1)
-      end
-      
-      dt = sys.dt.not_nil!
-      x = Float64Tensor.zeros([sys.n_states, 1])
-      u = Float64Tensor.ones([sys.n_inputs, 1])
-      
-      t_arr = Array(Float64).new(n_steps)
-      x_arr = Array(Float64Tensor).new(n_steps)
-      y_arr = Array(Float64Tensor).new(n_steps)
-      
-      n_steps.times do |i|
-        t_arr << i * dt
-        x_arr << x
-        y = sys.c.matmul(x) + sys.d.matmul(u)
-        y_arr << y
-        x = sys.a.matmul(x) + sys.b.matmul(u)
-      end
-      
-      {t_arr, x_arr, y_arr}
-    end
-
-    def simulate(t_span : Tuple(Float64, Float64), dt : Float64, x0 : Float64Tensor? = nil, u : Float64Tensor? = nil, method = :rk4)
-      x_init = x0 || Float64Tensor.zeros([n_states, 1])
-      u_val = u || Float64Tensor.zeros([n_inputs, 1])
-      
-      f = ->(x : Float64Tensor, t : Float64) {
-        @a.matmul(x) + @b.matmul(u_val)
-      }
-      
-      res_t, res_x = if method == :rk4
-        Solver.rk4(f, x_init, t_span, dt)
-      else
-        Solver.euler(f, x_init, t_span, dt)
-      end
-
-      # Calculate outputs for each state
-      res_y = res_x.map do |x_vec|
-        @c.matmul(x_vec) + @d.matmul(u_val)
-      end
-
-      {res_t, res_x, res_y}
-    end
-
-    # Vectorized simulation: optimized for StateSpace systems
-    def simulate(t : Float64Tensor, x0 : Float64Tensor? = nil, u : Float64Tensor? = nil, method = :rk4)
-      n_steps = t.size
-      n_states_count = self.n_states
-      n_outputs_count = self.n_outputs
-      n_inputs_count = self.n_inputs
-      
-      x_matrix = Float64Tensor.new([n_steps, n_states_count])
-      y_matrix = Float64Tensor.new([n_steps, n_outputs_count])
-      
-      x_current = x0.nil? ? Float64Tensor.zeros([n_states_count, 1]) : x0.dup
-      u_val = u.nil? ? Float64Tensor.zeros([n_inputs_count, 1]) : (u.is_c_contiguous ? u : u.dup(Num::RowMajor))
-      u_current = Float64Tensor.zeros([n_inputs_count, 1])
-      
-      n_steps.times do |i|
-        if u_val.shape[1] > 1
-          n_inputs_count.times do |j|
-            u_current.to_unsafe[j] = u_val.to_unsafe[j * n_steps + i]
-          end
-        else
-          u_current = u_val
-        end
-
-        # Step 1: Calculate output at current state
-        y = @c.matmul(x_current) + @d.matmul(u_current)
-        
-        # Step 2: Copy current state and output to result matrices using pointers
-        n_states_count.times do |j|
-          x_matrix.to_unsafe[i * n_states_count + j] = x_current.to_unsafe[j]
-        end
-        
-        n_outputs_count.times do |j|
-          y_matrix.to_unsafe[i * n_outputs_count + j] = y.to_unsafe[j]
-        end
-        
-        # Step 3: Advance to next state (if not the last step)
-        if i < n_steps - 1
-          h = t.to_unsafe[i + 1] - t.to_unsafe[i]
-          if method == :rk4
-            k1 = @a.matmul(x_current) + @b.matmul(u_current)
-            k2 = @a.matmul(x_current + k1 * (h / 2.0)) + @b.matmul(u_current)
-            k3 = @a.matmul(x_current + k2 * (h / 2.0)) + @b.matmul(u_current)
-            k4 = @a.matmul(x_current + k3 * h) + @b.matmul(u_current)
-            x_current = x_current + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
-          else
-            k = @a.matmul(x_current) + @b.matmul(u_current)
-            x_current = x_current + k * h
-          end
-        end
-      end
-      
-      {t, x_matrix, y_matrix}
-    end
-
-    # Simulates impulse response of discrete or continuous (sampled) system.
-    def impulse_response(n_steps = 100)
-      sys = self
-      curr_dt = @dt
-      unless curr_dt && curr_dt > 0
-        sys = self.sample(0.1)
-      end
-      
-      dt = sys.dt.not_nil!
-      x = Float64Tensor.zeros([sys.n_states, 1])
-      
-      t_arr = Array(Float64).new(n_steps)
-      x_arr = Array(Float64Tensor).new(n_steps)
-      y_arr = Array(Float64Tensor).new(n_steps)
-      
-      n_steps.times do |i|
-        t_arr << i * dt
-        u = i == 0 ? (Float64Tensor.ones([sys.n_inputs, 1]) / dt) : Float64Tensor.zeros([sys.n_inputs, 1])
-        
-        x_arr << x
-        y = sys.c.matmul(x) + sys.d.matmul(u)
-        y_arr << y
-        x = sys.a.matmul(x) + sys.b.matmul(u)
-      end
-      
-      {t_arr, x_arr, y_arr}
-    end
-
-    # Simulates unforced free response with non-zero initial state x0.
-    def initial_response(x0 : Float64Tensor, n_steps = 100)
-      sys = self
-      curr_dt = @dt
-      unless curr_dt && curr_dt > 0
-        sys = self.sample(0.1)
-      end
-      
-      dt = sys.dt.not_nil!
-      x = x0.dup
-      
-      t_arr = Array(Float64).new(n_steps)
-      x_arr = Array(Float64Tensor).new(n_steps)
-      y_arr = Array(Float64Tensor).new(n_steps)
-      
-      n_steps.times do |i|
-        t_arr << i * dt
-        x_arr << x
-        y = sys.c.matmul(x)
-        y_arr << y
-        x = sys.a.matmul(x)
-      end
-      
-      {t_arr, x_arr, y_arr}
-    end
-
-    # Computes the system bandwidth (the frequency at which magnitude drops by 3dB from DC gain).
-    def bandwidth : Float64
-      unless n_inputs == 1 && n_outputs == 1
-        raise ArgumentError.new("Bandwidth is only supported for SISO systems")
-      end
-
-      # Calculate DC Gain magnitude
-      dc = dcgain[0, 0].value
-      dc_mag = dc.abs
-      target_mag = dc_mag / Math.sqrt(2.0) # -3 dB point
-
-      # Sweep frequencies log-spaced
-      omega = Float64Tensor.linear_space(-2.0, 4.0, 1000).map { |v| 10.0 ** v }
-      h = freqresp(omega)
-
-      best_w = 0.0
-      min_diff = Float64::INFINITY
-      omega.size.times do |i|
-        mag = h.to_unsafe[i].abs
-        diff = (mag - target_mag).abs
-        if diff < min_diff
-          min_diff = diff
-          best_w = omega[i].value
-        end
-      end
-
-      best_w
-    end
-
-    # Transforms system to Control Canonical Form.
-    def to_control_canonical_form : Tuple(StateSpace, Float64Tensor)
-      unless n_inputs == 1
-        raise ArgumentError.new("Control canonical form only supported for single-input systems")
-      end
-      n = n_states
-      co = ctrb
-      unless is_controllable?
-        raise ArgumentError.new("System is not controllable; cannot convert to control canonical form")
-      end
-
-      # Find characteristic polynomial coefficients of A: s^n + a1 s^(n-1) + ... + an = 0
-      # Using companion matrix properties or Leverrier-Faddeev algorithm
-      # Let's use Leverrier-Faddeev algorithm to get polynomial of A:
-      poly = Array(Float64).new(n + 1, 0.0)
-      poly[0] = 1.0
-      curr_a = Float64Tensor.identity(n)
-      (1..n).each do |i|
-        curr_a = @a.matmul(curr_a)
-        trace_val = 0.0
-        n.times { |r| trace_val += curr_a[r, r].value }
-        ci = -trace_val / i
-        poly[i] = ci
-        curr_a = curr_a + Float64Tensor.identity(n) * ci
-      end
-
-      # Build Transformation Matrix T = Co * M
-      # where M is the upper-triangular Toeplitz matrix formed by coefficients [1, a1, a2, ..., a_n-1]
-      m_mat = Float64Tensor.zeros([n, n])
-      n.times do |i|
-        n.times do |j|
-          if j >= i
-            m_mat[i, j] = poly[j - i]
-          end
-        end
-      end
-
-      t_matrix = co.matmul(m_mat)
-      {similarity_transform(t_matrix), t_matrix}
-    end
-
-    # Transforms system to Observable Canonical Form.
-    def to_observable_canonical_form : Tuple(StateSpace, Float64Tensor)
-      unless n_outputs == 1
-        raise ArgumentError.new("Observable canonical form only supported for single-output systems")
-      end
-      n = n_states
-      ob = obsv
-      unless is_observable?
-        raise ArgumentError.new("System is not observable; cannot convert to observable canonical form")
-      end
-
-      # Find characteristic polynomial coefficients of A using Leverrier-Faddeev:
-      poly = Array(Float64).new(n + 1, 0.0)
-      poly[0] = 1.0
-      curr_a = Float64Tensor.identity(n)
-      (1..n).each do |i|
-        curr_a = @a.matmul(curr_a)
-        trace_val = 0.0
-        n.times { |r| trace_val += curr_a[r, r].value }
-        ci = -trace_val / i
-        poly[i] = ci
-        curr_a = curr_a + Float64Tensor.identity(n) * ci
-      end
-
-      # Build Toeplitz matrix M
-      m_mat = Float64Tensor.zeros([n, n])
-      n.times do |i|
-        n.times do |j|
-          if j >= i
-            m_mat[i, j] = poly[j - i]
-          end
-        end
-      end
-
-      # For observability, transformation is T_inv = M * Ob
-      t_inv = m_mat.matmul(ob)
-      t_matrix = t_inv.inv
-      {similarity_transform(t_matrix), t_matrix}
-    end
-
-
     def is_stable?
       p = poles
       n = p.size
@@ -442,8 +173,7 @@ module CrySpace
       stable
     end
 
-    def ctrb
-      # Controllability matrix: [B AB A^2B ... A^(n-1)B]
+    def ctrb : Float64Tensor
       n = n_states
       m = n_inputs
       res = Float64Tensor.zeros([n, n * m])
@@ -460,8 +190,7 @@ module CrySpace
       res
     end
 
-    def obsv
-      # Observability matrix: [C; CA; CA^2; ...; CA^(n-1)]
+    def obsv : Float64Tensor
       n = n_states
       p = n_outputs
       res = Float64Tensor.zeros([n * p, n])
@@ -496,8 +225,80 @@ module CrySpace
       count
     end
 
+    # Transforms system to Control Canonical Form.
+    def to_control_canonical_form : Tuple(StateSpace, Float64Tensor)
+      unless n_inputs == 1
+        raise ArgumentError.new("Control canonical form only supported for single-input systems")
+      end
+      n = n_states
+      co = ctrb
+      unless is_controllable?
+        raise ArgumentError.new("System is not controllable; cannot convert to control canonical form")
+      end
+
+      poly = Array(Float64).new(n + 1, 0.0)
+      poly[0] = 1.0
+      curr_a = Float64Tensor.identity(n)
+      (1..n).each do |i|
+        curr_a = @a.matmul(curr_a)
+        trace_val = 0.0
+        n.times { |r| trace_val += curr_a[r, r].value }
+        ci = -trace_val / i
+        poly[i] = ci
+        curr_a = curr_a + Float64Tensor.identity(n) * ci
+      end
+
+      m_mat = Float64Tensor.zeros([n, n])
+      n.times do |i|
+        n.times do |j|
+          if j >= i
+            m_mat[i, j] = poly[j - i]
+          end
+        end
+      end
+
+      t_matrix = co.matmul(m_mat)
+      {similarity_transform(t_matrix), t_matrix}
+    end
+
+    # Transforms system to Observable Canonical Form.
+    def to_observable_canonical_form : Tuple(StateSpace, Float64Tensor)
+      unless n_outputs == 1
+        raise ArgumentError.new("Observable canonical form only supported for single-output systems")
+      end
+      n = n_states
+      ob = obsv
+      unless is_observable?
+        raise ArgumentError.new("System is not observable; cannot convert to observable canonical form")
+      end
+
+      poly = Array(Float64).new(n + 1, 0.0)
+      poly[0] = 1.0
+      curr_a = Float64Tensor.identity(n)
+      (1..n).each do |i|
+        curr_a = @a.matmul(curr_a)
+        trace_val = 0.0
+        n.times { |r| trace_val += curr_a[r, r].value }
+        ci = -trace_val / i
+        poly[i] = ci
+        curr_a = curr_a + Float64Tensor.identity(n) * ci
+      end
+
+      m_mat = Float64Tensor.zeros([n, n])
+      n.times do |i|
+        n.times do |j|
+          if j >= i
+            m_mat[i, j] = poly[j - i]
+          end
+        end
+      end
+
+      t_inv = m_mat.matmul(ob)
+      t_matrix = t_inv.inv
+      {similarity_transform(t_matrix), t_matrix}
+    end
+
     def to_transferfunction
-      # SISO only for now
       unless n_inputs == 1 && n_outputs == 1
         raise "to_transferfunction only supported for SISO systems"
       end
@@ -551,7 +352,6 @@ module CrySpace
       n2 = other.n_states
       
       a_cl = Float64Tensor.zeros([n1 + n2, n1 + n2])
-      # Manual block copy
       n1.times { |r| n1.times { |c| a_cl[r, c] = @a[r, c].value } }
       n2.times { |r| n2.times { |c| a_cl[n1+r, n1+c] = other.a[r, c].value } }
       
@@ -597,9 +397,6 @@ module CrySpace
       StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
     end
 
-    # State-feedback pole placement using Ackermann's formula.
-    # Places poles of (A - B*K) at desired locations.
-    # Returns the gain matrix K (1 x n).
     def acker(poles : Array(Float64) | Array(Complex))
       n = n_states
       raise ArgumentError.new("Must specify exactly #{n} poles") if poles.size != n
@@ -642,399 +439,17 @@ module CrySpace
       last_row.matmul(phi_real)
     end
 
-    # Evaluates system response G(jw) at a set of frequency points.
-    # Returns a Tensor of Complex numbers of shape [n_outputs, n_inputs, omega.size].
-    def freqresp(omega : Float64Tensor)
-      n = n_states
-      m = n_inputs
-      p = n_outputs
-      w_size = omega.size
-      
-      res = Tensor(Complex, CPU(Complex)).zeros([p, m, w_size])
-      
-      a_c = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      n.times do |i|
-        n.times do |j|
-          a_c.to_unsafe[i * n + j] = Complex.new(@a.to_unsafe[i * n + j], 0.0)
-        end
-      end
-      
-      b_c = Tensor(Complex, CPU(Complex)).zeros([n, m])
-      n.times do |i|
-        m.times do |j|
-          b_c.to_unsafe[i * m + j] = Complex.new(@b.to_unsafe[i * m + j], 0.0)
-        end
-      end
-      
-      c_c = Tensor(Complex, CPU(Complex)).zeros([p, n])
-      p.times do |i|
-        n.times do |j|
-          c_c.to_unsafe[i * n + j] = Complex.new(@c.to_unsafe[i * n + j], 0.0)
-        end
-      end
-      
-      d_c = Tensor(Complex, CPU(Complex)).zeros([p, m])
-      p.times do |i|
-        m.times do |j|
-          d_c.to_unsafe[i * m + j] = Complex.new(@d.to_unsafe[i * m + j], 0.0)
-        end
-      end
-      
-      w_size.times do |idx|
-        w = omega.to_unsafe[idx]
-        jw_i_minus_a = Tensor(Complex, CPU(Complex)).zeros([n, n])
-        n.times do |i|
-          n.times do |j|
-            val = -a_c.to_unsafe[i * n + j]
-            if i == j
-              val += Complex.new(0.0, w)
-            end
-            jw_i_minus_a.to_unsafe[i * n + j] = val
-          end
-        end
-        
-        x = jw_i_minus_a.solve(b_c)
-        g = c_c.matmul(x) + d_c
-        
-        p.times do |out_idx|
-          m.times do |in_idx|
-            res.to_unsafe[(out_idx * m + in_idx) * w_size + idx] = g.to_unsafe[out_idx * m + in_idx]
-          end
-        end
-      end
-      
-      res
-    end
-
-    # Solves the Continuous Algebraic Riccati Equation:
-    # A^T * P + P * A - P * B * R^-1 * B^T * P + Q = 0
-    # Returns P.
-    def care(q : Float64Tensor, r : Float64Tensor)
-      n = n_states
-      m = n_inputs
-      
-      g = @b.matmul(r.inv).matmul(@b.transpose)
-      
-      h = Float64Tensor.zeros([2 * n, 2 * n])
-      n.times do |i|
-        n.times do |j|
-          h.to_unsafe[i * (2 * n) + j] = @a.to_unsafe[i * n + j]
-          h.to_unsafe[i * (2 * n) + n + j] = -g.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + j] = -q.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + n + j] = -@a.to_unsafe[j * n + i]
-        end
-      end
-      
-      w, v = h.eig_c
-      
-      # Reconstruct complex eigenvectors from the real/imag columns returned by LAPACK dgeev
-      # Note: v returned from LAPACK is in ColMajor layout
-      v_c = Tensor(Complex, CPU(Complex)).zeros([2 * n, 2 * n])
-      col = 0
-      while col < 2 * n
-        is_complex = w.to_unsafe[col].imag.abs > 1e-12
-        if is_complex
-          (2 * n).times do |row|
-            real_val = v.to_unsafe[col * (2 * n) + row]
-            imag_val = v.to_unsafe[(col + 1) * (2 * n) + row]
-            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(real_val, imag_val)
-            v_c.to_unsafe[row * (2 * n) + col + 1] = Complex.new(real_val, -imag_val)
-          end
-          col += 2
-        else
-          (2 * n).times do |row|
-            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(v.to_unsafe[col * (2 * n) + row], 0.0)
-          end
-          col += 1
-        end
-      end
-      
-      stable_indices = Array(Int32).new
-      w.size.times do |i|
-        if w.to_unsafe[i].real < 0.0
-          stable_indices << i
-        end
-      end
-      
-      if stable_indices.size != n
-        raise ArgumentError.new("Could not find stable subspace (expected #{n} stable eigenvalues, found #{stable_indices.size})")
-      end
-      
-      u1 = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      u2 = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      
-      n.times do |col_idx|
-        orig_col = stable_indices[col_idx]
-        n.times do |row_idx|
-          u1.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[row_idx * (2 * n) + orig_col]
-          u2.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[(n + row_idx) * (2 * n) + orig_col]
-        end
-      end
-      
-      p_complex = u2.matmul(u1.inv)
-      
-      p_real = Float64Tensor.zeros([n, n])
-      (n * n).times do |i|
-        p_real.to_unsafe[i] = p_complex.to_unsafe[i].real
-      end
-      
-      p_real
-    end
-
-    # Solves continuous-time Linear Quadratic Regulator (LQR) controller: u = -Kx
-    # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
-    def lqr(q : Float64Tensor, r : Float64Tensor)
-      p = care(q, r)
-      k = r.inv.matmul(@b.transpose).matmul(p)
-      a_cl = @a - @b.matmul(k)
-      {k, p, a_cl.eigvals_c.to_a}
-    end
-
-    # Solves continuous-time Lyapunov equation: A*P + P*A^T + Q = 0
-    # Returns P.
-    def lyap(q : Float64Tensor)
-      n = n_states
-      eye = Float64Tensor.identity(n)
-      m_lhs = eye.kron(@a) + @a.kron(eye)
-      q_vec = q.reshape([n * n, 1])
-      p_vec = m_lhs.solve(-q_vec)
-      p_vec.reshape([n, n])
-    end
-
-    # Solves discrete-time Lyapunov equation: A*P*A^T - P + Q = 0
-    # Returns P.
-    def dlyap(q : Float64Tensor)
-      n = n_states
-      eye_nn = Float64Tensor.identity(n * n)
-      m_lhs = @a.kron(@a) - eye_nn
-      q_vec = q.reshape([n * n, 1])
-      p_vec = m_lhs.solve(-q_vec)
-      p_vec.reshape([n, n])
-    end
-
-    # Computes classical gain and phase margins (Bode margins) for a SISO system.
-    # Returns: {GM (amplitude gain margin), GM_dB (gain margin in dB), PM (phase margin in degrees), w_gc (gain crossover freq), w_pc (phase crossover freq)}
-    def stability_margins
-      unless n_inputs == 1 && n_outputs == 1
-        raise ArgumentError.new("Stability margins only supported for SISO systems")
-      end
-
-      omega = Float64Tensor.linear_space(0.01, 1000.0, 10000)
-      h = freqresp(omega)
-      
-      w_gc = -1.0
-      w_pc = -1.0
-      
-      pm = 0.0
-      gm = Float64::INFINITY
-      
-      wrap_phase = ->(p : Float64) {
-        val = p % (2.0 * Math::PI)
-        val -= 2.0 * Math::PI if val > Math::PI
-        val += 2.0 * Math::PI if val < -Math::PI
-        val
-      }
-
-      n_points = omega.size
-      mags = Array(Float64).new(n_points)
-      phases = Array(Float64).new(n_points)
-      
-      n_points.times do |i|
-        val = h.to_unsafe[i]
-        mags << val.abs
-        phases << wrap_phase.call(Math.atan2(val.imag, val.real))
-      end
-      
-      (n_points - 1).times do |i|
-        if (mags[i] - 1.0) * (mags[i+1] - 1.0) <= 0.0
-          t = (1.0 - mags[i]) / (mags[i+1] - mags[i])
-          w = omega[i].value + t * (omega[i+1].value - omega[i].value)
-          w_gc = w
-          interpolated_phase = phases[i] + t * (phases[i+1] - phases[i])
-          pm = wrap_phase.call(interpolated_phase + Math::PI) * 180.0 / Math::PI
-          break
-        end
-      end
-      
-      (n_points - 1).times do |i|
-        p1 = phases[i]
-        p2 = phases[i+1]
-        
-        if p1 * p2 < 0.0 && p1.abs > 2.0 && p2.abs > 2.0
-          t = (-Math::PI - p1) / (p2 - p1) rescue 0.5
-          w = omega[i].value + t * (omega[i+1].value - omega[i].value)
-          w_pc = w
-          interpolated_mag = mags[i] + t * (mags[i+1] - mags[i])
-          gm = 1.0 / interpolated_mag if interpolated_mag > 0.0
-          break
-        end
-      end
-      
-      gm_db = gm == Float64::INFINITY ? Float64::INFINITY : 20.0 * Math.log10(gm)
-      
-      {gm, gm_db, pm, w_gc, w_pc}
-    end
-
-    # Solves the Discrete-Time Algebraic Riccati Equation (DARE) using iterative method:
-    # A^T * P * A - P - A^T * P * B * (R + B^T * P * B)^-1 * B^T * P * A + Q = 0
-    # Returns P.
-    def dare(q : Float64Tensor, r : Float64Tensor, max_iter = 1000, tol = 1e-9)
-      n = n_states
-      p = q.dup
-      
-      a_t = @a.transpose
-      b_t = @b.transpose
-      
-      max_iter.times do
-        # temp = R + B^T * P * B
-        temp = r + b_t.matmul(p).matmul(@b)
-        
-        # P_next = A^T * P * A - A^T * P * B * inv(R + B^T * P * B) * B^T * P * A + Q
-        term1 = a_t.matmul(p).matmul(@a)
-        term2 = a_t.matmul(p).matmul(@b).matmul(temp.inv).matmul(b_t).matmul(p).matmul(@a)
-        p_next = term1 - term2 + q
-        
-        # Check convergence
-        diff = 0.0
-        (n * n).times do |i|
-          d_val = (p_next.to_unsafe[i] - p.to_unsafe[i]).abs
-          diff = d_val if d_val > diff
-        end
-        
-        p = p_next
-        break if diff < tol
-      end
-      p
-    end
-
-    # Solves discrete-time Linear Quadratic Regulator (DLQR) controller: u = -Kx
-    # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
-    def dlqr(q : Float64Tensor, r : Float64Tensor)
-      p = dare(q, r)
-      b_t = @b.transpose
-      temp = r + b_t.matmul(p).matmul(@b)
-      k = temp.inv.matmul(b_t).matmul(p).matmul(@a)
-      a_cl = @a - @b.matmul(k)
-      {k, p, a_cl.eigvals_c.to_a}
-    end
-
-    # Synthesizes an optimal H2 state-feedback control gain K.
-    # Mimics state-feedback control loop for system: dx/dt = A*x + B*u + Bw*w, z = C_z*x + D_zu*u.
-    # We solve LQR where Q = C_z^T * C_z and R = D_zu^T * D_zu.
-    # Returns {K, P} where u = -K*x.
-    def h2syn(c_z : Float64Tensor, d_zu : Float64Tensor) : Tuple(Float64Tensor, Float64Tensor)
-      q = c_z.transpose.matmul(c_z)
-      r = d_zu.transpose.matmul(d_zu)
-      p = care(q, r)
-      k = r.inv.matmul(@b.transpose).matmul(p)
-      {k, p}
-    end
-
-    # Synthesizes a robust suboptimal H-infinity state-feedback control gain K for attenuation level gamma.
-    # Returns {K, P} if a solution exists, else raises an error.
-    def hinfsyn(c_z : Float64Tensor, d_zu : Float64Tensor, gamma : Float64) : Tuple(Float64Tensor, Float64Tensor)
-      n = n_states
-      q = c_z.transpose.matmul(c_z)
-      r = d_zu.transpose.matmul(d_zu)
-      
-      # For state feedback H-infinity design, we solve a modified Riccati equation:
-      # A^T * P + P * A + P * ( (1/gamma^2) * B_w * B_w^T - B * R^-1 * B^T ) * P + Q = 0
-      # Assumes a process noise input matrix B_w (here, we assume B_w = B for simplicity or identity).
-      # Let's define B_w as an identity matrix of size n.
-      b_w = Float64Tensor.identity(n)
-      
-      r_inv = r.inv
-      b_term = @b.matmul(r_inv).matmul(@b.transpose)
-      w_term = b_w.matmul(b_w.transpose) * (1.0 / (gamma * gamma))
-      
-      g = b_term - w_term
-      
-      # Build Hamiltonian Matrix
-      h = Float64Tensor.zeros([2 * n, 2 * n])
-      n.times do |i|
-        n.times do |j|
-          h.to_unsafe[i * (2 * n) + j] = @a.to_unsafe[i * n + j]
-          h.to_unsafe[i * (2 * n) + n + j] = -g.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + j] = -q.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + n + j] = -@a.to_unsafe[j * n + i]
-        end
-      end
-      
-      w_eig, v_eig = h.eig_c
-      
-      # Reconstruct complex eigenvectors
-      v_c = Tensor(Complex, CPU(Complex)).zeros([2 * n, 2 * n])
-      col = 0
-      while col < 2 * n
-        is_complex = w_eig.to_unsafe[col].imag.abs > 1e-12
-        if is_complex
-          (2 * n).times do |row|
-            real_val = v_eig.to_unsafe[col * (2 * n) + row]
-            imag_val = v_eig.to_unsafe[(col + 1) * (2 * n) + row]
-            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(real_val, imag_val)
-            v_c.to_unsafe[row * (2 * n) + col + 1] = Complex.new(real_val, -imag_val)
-          end
-          col += 2
-        else
-          (2 * n).times do |row|
-            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(v_eig.to_unsafe[col * (2 * n) + row], 0.0)
-          end
-          col += 1
-        end
-      end
-      
-      stable_indices = Array(Int32).new
-      w_eig.size.times do |i|
-        if w_eig.to_unsafe[i].real < 0.0
-          stable_indices << i
-        end
-      end
-      
-      if stable_indices.size != n
-        raise ArgumentError.new("Could not find stable subspace for H-infinity synthesis at gamma = #{gamma}")
-      end
-      
-      u1 = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      u2 = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      
-      n.times do |col_idx|
-        orig_col = stable_indices[col_idx]
-        n.times do |row_idx|
-          u1.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[row_idx * (2 * n) + orig_col]
-          u2.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[(n + row_idx) * (2 * n) + orig_col]
-        end
-      end
-      
-      p_complex = u2.matmul(u1.inv)
-      p_real = Float64Tensor.zeros([n, n])
-      (n * n).times do |i|
-        p_real.to_unsafe[i] = p_complex.to_unsafe[i].real
-      end
-      
-      # H-infinity gain: K = R^-1 * B^T * P
-      k = r_inv.matmul(@b.transpose).matmul(p_real)
-      {k, p_real}
-    end
-
-    # Computes estimator gain L for a full-state observer via duality:
-    # error dynamics error_k+1 = (A - L*C)*error_k
-    # Returns the observer gain L (n x 1).
     def acker_obs(poles : Array(Float64) | Array(Complex))
-      # Duality: closed-loop observer dynamics (A - L*C) is dual to controller (A^T - C^T*L^T)
       sys_dual = StateSpace.new(@a.transpose, @c.transpose, @b.transpose, @d.transpose)
       k_dual = sys_dual.acker(poles)
       k_dual.transpose
     end
 
-    # Computes Controllability (:c) or Observability (:o) Gramian.
-    # Returns Gramian matrix P.
     def gram(type : Symbol)
       if type == :c
-        # Controllability Gramian: A*Wc + Wc*A^T + B*B^T = 0
         q = @b.matmul(@b.transpose)
         lyap(q)
       elsif type == :o
-        # Observability Gramian: A^T*Wo + Wo*A + C^T*C = 0
         q = @c.transpose.matmul(@c)
         sys_t = StateSpace.new(@a.transpose, @b, @c, @d)
         sys_t.lyap(q)
@@ -1043,14 +458,10 @@ module CrySpace
       end
     end
 
-    # Computes the Hankel Singular Values of the system.
-    # Returns a sorted array of Singular Values.
     def hsvd
       wc = gram(:c)
       wo = gram(:o)
       prod = wc.matmul(wo)
-      
-      # For a positive-semidefinite product, eigenvalues are real and non-negative
       eigvals = prod.eigvals
       res = Array(Float64).new(eigvals.size)
       eigvals.size.times do |i|
@@ -1059,12 +470,6 @@ module CrySpace
       res.sort.reverse
     end
 
-    # Simulates time response with arbitrary input (wrapper for simulate).
-    def lsim(u : Float64Tensor, t : Float64Tensor, x0 : Float64Tensor? = nil, method = :rk4)
-      simulate(t, x0: x0, u: u, method: method)
-    end
-
-    # Converts a SISO StateSpace system to Observability Canonical Form.
     def to_observability_form
       unless n_inputs == 1 && n_outputs == 1
         raise ArgumentError.new("Observability form only supported for SISO systems")
@@ -1085,12 +490,10 @@ module CrySpace
       StateSpace.new(ss_c.a.transpose, ss_c.c.transpose, ss_c.b.transpose, ss_c.d, @dt)
     end
 
-    # Converts a StateSpace system to Modal (Diagonal) Form.
     def to_modal_form
       n = n_states
       w, v = @a.eig_c
       
-      # Form transformation matrix T using real and imaginary parts of eigenvectors
       t_matrix = Float64Tensor.zeros([n, n])
       col = 0
       while col < n
@@ -1116,8 +519,6 @@ module CrySpace
       StateSpace.new(a_m, b_m, c_m, @d, @dt)
     end
 
-    # Evaluates closed-loop poles as gain K varies from 0 to infinity for a SISO system.
-    # Returns an array of pole arrays.
     def root_locus(gains : Float64Tensor)
       unless n_inputs == 1 && n_outputs == 1
         raise ArgumentError.new("Root locus only supported for SISO systems")
@@ -1135,7 +536,6 @@ module CrySpace
       res
     end
 
-    # Returns Bode data: {omega, magnitudes (dB), phases (degrees)} for a SISO system.
     def bode_data(omega : Float64Tensor)
       unless n_inputs == 1 && n_outputs == 1
         raise ArgumentError.new("Bode data only supported for SISO systems")
@@ -1143,7 +543,6 @@ module CrySpace
 
       h = freqresp(omega)
       n_points = omega.size
-      
       mags_db = Array(Float64).new(n_points)
       phases_deg = Array(Float64).new(n_points)
       
@@ -1163,7 +562,6 @@ module CrySpace
       {omega, mags_db, phases_deg}
     end
 
-    # Returns Nyquist data: {real_parts, imaginary_parts} for a SISO system.
     def nyquist_data(omega : Float64Tensor)
       unless n_inputs == 1 && n_outputs == 1
         raise ArgumentError.new("Nyquist data only supported for SISO systems")
@@ -1171,7 +569,6 @@ module CrySpace
 
       h = freqresp(omega)
       n_points = omega.size
-      
       real_parts = Array(Float64).new(n_points)
       imag_parts = Array(Float64).new(n_points)
       
@@ -1184,7 +581,6 @@ module CrySpace
       {real_parts, imag_parts}
     end
 
-    # Helper method to compute matrix logarithm using eigenvalue decomposition.
     def self.logm(matrix : Float64Tensor) : Tensor(Complex, CPU(Complex))
       n = matrix.shape[0]
       w, v = matrix.eig_c
@@ -1219,7 +615,6 @@ module CrySpace
       v_c.matmul(d_log).matmul(v_c.inv)
     end
 
-    # Converts a discrete-time StateSpace system to continuous-time (D2C).
     def to_continuous
       dt = @dt
       if dt.nil? || dt <= 0
@@ -1229,7 +624,6 @@ module CrySpace
       n = n_states
       m = n_inputs
       
-      # Form block matrix M = [Ad Bd; 0 I]
       block = Float64Tensor.zeros([n + m, n + m])
       n.times do |r|
         n.times do |c|
@@ -1244,7 +638,6 @@ module CrySpace
       end
       
       log_m = StateSpace.logm(block)
-      
       ac = Float64Tensor.zeros([n, n])
       bc = Float64Tensor.zeros([n, m])
       
@@ -1260,8 +653,6 @@ module CrySpace
       StateSpace.new(ac, bc, @c, @d, nil)
     end
 
-    # Computes a balanced truncation of the system.
-    # Returns a reduced-order StateSpace system of size `orders`.
     def balred(orders : Int32)
       if orders > n_states
         raise ArgumentError.new("Reduced order must be less than or equal to current order")
@@ -1273,7 +664,6 @@ module CrySpace
       wc = gram(:c)
       wo = gram(:o)
       
-      # Step 2: Compute SVD of Gramians to find Cholesky-like factors
       uc, sc, vct = wc.svd
       uo, so, vot = wo.svd
       
@@ -1291,12 +681,10 @@ module CrySpace
         end
       end
       
-      # Step 3: SVD of Lo^T * Lc
       product = lo.transpose.matmul(lc)
       u_p, s_p, vt_p = product.svd
       v_p = vt_p.transpose
       
-      # Step 4: Construct transformation matrices T and T_inv
       t_matrix = Float64Tensor.zeros([n, n])
       t_inv = Float64Tensor.zeros([n, n])
       
@@ -1304,7 +692,6 @@ module CrySpace
         sig_val = s_p[i].value
         sig_factor = sig_val.abs > 1e-12 ? 1.0 / Math.sqrt(sig_val) : 0.0
         
-        # Column i of T = Lc * col_i(V) * sig_factor
         n.times do |r|
           sum = 0.0
           n.times do |k|
@@ -1313,7 +700,6 @@ module CrySpace
           t_matrix[r, i] = sum * sig_factor
         end
         
-        # Row i of T_inv = sig_factor * col_i(U)^T * Lo^T
         n.times do |c_idx|
           sum = 0.0
           n.times do |k|
@@ -1323,12 +709,10 @@ module CrySpace
         end
       end
       
-      # Transform full system to balanced realization
       ab = t_inv.matmul(@a).matmul(t_matrix)
       bb = t_inv.matmul(@b)
       cb = @c.matmul(t_matrix)
       
-      # Step 5: Truncate to first `orders` states
       ar = Float64Tensor.zeros([orders, orders])
       br = Float64Tensor.zeros([orders, n_inputs])
       cr = Float64Tensor.zeros([n_outputs, orders])
@@ -1350,9 +734,6 @@ module CrySpace
       StateSpace.new(ar, br, cr, @d, @dt)
     end
 
-    # Designs a Linear Quadratic Gaussian (LQG) controller.
-    # Returns a StateSpace controller that takes output measurements y
-    # as input and produces control signals u.
     def lqg(k_gain : Float64Tensor, l_gain : Float64Tensor) : StateSpace
       n = n_states
       m = n_inputs
@@ -1370,13 +751,11 @@ module CrySpace
       StateSpace.new(a_lqg, b_lqg, c_lqg, d_lqg, @dt)
     end
 
-    # Returns Nichols data: {omega, magnitudes (dB), phases (degrees)} for a SISO system.
     def nichols_data(omega : Float64Tensor)
       _, db, deg = bode_data(omega)
       {omega, db, deg}
     end
 
-    # Performs coordinate transformation z = T * x (i.e. x = T_inv * z)
     def similarity_transform(t_matrix : Float64Tensor) : StateSpace
       t_inv = t_matrix.inv
       a_new = t_inv.matmul(@a).matmul(t_matrix)
@@ -1385,8 +764,6 @@ module CrySpace
       StateSpace.new(a_new, b_new, c_new, @d, @dt)
     end
 
-    # Computes the controllability decomposition (controllable / uncontrollable parts).
-    # Returns {transformed_system, T_matrix, controllable_rank}
     def controllable_decomposition : Tuple(StateSpace, Float64Tensor, Int32)
       n = n_states
       m = n_inputs
@@ -1403,7 +780,6 @@ module CrySpace
       end
       
       u, s, vt = co.svd
-      
       r = 0
       s.size.times do |i|
         r += 1 if s[i].value > 1e-9
@@ -1419,8 +795,6 @@ module CrySpace
       {StateSpace.new(a_c, b_c, c_c, @d, @dt), t_matrix, r}
     end
 
-    # Computes the observability decomposition (observable / unobservable parts).
-    # Returns {transformed_system, T_matrix, observable_rank}
     def observable_decomposition : Tuple(StateSpace, Float64Tensor, Int32)
       n = n_states
       p = n_outputs
@@ -1437,7 +811,6 @@ module CrySpace
       end
       
       u, s, vt = ob.svd
-      
       r = 0
       s.size.times do |i|
         r += 1 if s[i].value > 1e-9
@@ -1453,13 +826,10 @@ module CrySpace
       {StateSpace.new(a_o, b_o, c_o, @d, @dt), t_matrix, r}
     end
 
-    # Computes the minimal realization of the system.
-    # Eliminates uncontrollable and unobservable states.
     def minreal : StateSpace
       n = n_states
       return self if n == 0
       
-      # Step 1: Controllability Decomposition
       sys_c, _, r_c = controllable_decomposition
       return StateSpace.new(Float64Tensor.zeros([0, 0]), Float64Tensor.zeros([0, n_inputs]), Float64Tensor.zeros([n_outputs, 0]), @d, @dt) if r_c == 0
       
@@ -1482,8 +852,6 @@ module CrySpace
       end
       
       sys_controllable = StateSpace.new(a_c, b_c, c_c, @d, @dt)
-      
-      # Step 2: Observability Decomposition on the controllable subsystem
       sys_o, _, r_o = sys_controllable.observable_decomposition
       return StateSpace.new(Float64Tensor.zeros([0, 0]), Float64Tensor.zeros([0, n_inputs]), Float64Tensor.zeros([n_outputs, 0]), @d, @dt) if r_o == 0
       
@@ -1508,8 +876,6 @@ module CrySpace
       StateSpace.new(a_o, b_o, c_o, @d, @dt)
     end
 
-    # Augments the state-space system with an integrator for tracking control.
-    # Returns the augmented StateSpace system.
     def augment_integrator : StateSpace
       n = n_states
       m = n_inputs
@@ -1556,16 +922,12 @@ module CrySpace
       StateSpace.new(a_aug, b_aug, c_aug, d_aug, @dt)
     end
 
-    # Computes the optimal Kalman estimator gain L for continuous systems.
-    # Q is process noise covariance matrix, R is measurement noise covariance matrix.
     def lqe(q_noise : Float64Tensor, r_noise : Float64Tensor) : Float64Tensor
       dual_sys = StateSpace.new(@a.transpose, @c.transpose, @b.transpose, @d.transpose, @dt)
       p = dual_sys.care(q_noise, r_noise)
       p.matmul(@c.transpose).matmul(r_noise.inv)
     end
 
-    # Computes the optimal Kalman estimator gain L for discrete systems.
-    # Q is process noise covariance matrix, R is measurement noise covariance matrix.
     def dlqe(q_noise : Float64Tensor, r_noise : Float64Tensor) : Float64Tensor
       dual_sys = StateSpace.new(@a.transpose, @c.transpose, @b.transpose, @d.transpose, @dt)
       p = dual_sys.dare(q_noise, r_noise)
@@ -1574,70 +936,8 @@ module CrySpace
       @a.matmul(p).matmul(@c.transpose).matmul(inv_term)
     end
 
-    # Alias for converting State-Space to TransferFunction representation (ss2tf)
     def ss2tf : TransferFunction
       to_transferfunction
-    end
-
-    # Computes the Peak Gain (H-infinity norm) of a SISO system.
-    # Returns the peak magnitude of G(j*w).
-    def peak_gain : Float64
-      unless n_inputs == 1 && n_outputs == 1
-        raise ArgumentError.new("Peak gain is only supported for SISO systems")
-      end
-      # Evaluate frequency response over a wide log-space range to find maximum magnitude
-      omega = Float64Tensor.linear_space(-3.0, 5.0, 2000).map { |v| 10.0 ** v }
-      h = freqresp(omega)
-      
-      max_mag = 0.0
-      h.size.times do |i|
-        mag = h.to_unsafe[i].abs
-        max_mag = mag if mag > max_mag
-      end
-      max_mag
-    end
-
-    # Computes the multi-loop/disk margin (or classical loop margins using Nyquist analysis).
-    # Returns {gain_margin_range, phase_margin_range}.
-    # We solve Nyquist distance to the critical point -1+j0.
-    def loop_margins : Tuple(Tuple(Float64, Float64), Tuple(Float64, Float64))
-      unless n_inputs == 1 && n_outputs == 1
-        raise ArgumentError.new("Loop margins are only supported for SISO systems")
-      end
-      
-      # Evaluate open-loop response
-      omega = Float64Tensor.linear_space(-2.0, 4.0, 1000).map { |v| 10.0 ** v }
-      h = freqresp(omega)
-
-      # Nyquist distance to -1+j0: s_m = min | 1 + G(j*w) |
-      min_dist = Float64::INFINITY
-      h.size.times do |i|
-        g_val = h.to_unsafe[i]
-        dist = (g_val + 1.0).abs
-        min_dist = dist if dist < min_dist
-      end
-
-      # Guard against unstable closed loops (min_dist near 0)
-      min_dist = 1e-4 if min_dist < 1e-4
-
-      # Lower and upper gain margins: GM_low = 1 / (1 + sm), GM_high = 1 / (1 - sm)
-      gm_low = 1.0 / (1.0 + min_dist)
-      gm_high = min_dist >= 1.0 ? Float64::INFINITY : 1.0 / (1.0 - min_dist)
-
-      # Phase margin: PM = +/- 2 * arcsin(sm / 2)
-      pm_rad = 2.0 * Math.asin({min_dist / 2.0, 1.0}.min)
-      pm_deg = pm_rad * 180.0 / Math::PI
-
-      { {gm_low, gm_high}, {-pm_deg, pm_deg} }
-    end
-
-    def to_s(io)
-      io << "StateSpace system:\n"
-      io << "A = " << @a << "\n"
-      io << "B = " << @b << "\n"
-      io << "C = " << @c << "\n"
-      io << "D = " << @d << "\n"
-      io << "dt = " << @dt if @dt
     end
   end
 end
