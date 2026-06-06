@@ -1053,4 +1053,55 @@ describe CrySpace::StateSpace do
       df = CrySpace::AdaptiveNonlinear.describing_function_backlash(2.0, 0.5)
       df.real.should_not be_nil
     end
+
+    it "solves ODEs using adaptive rk45" do
+      f = ->(x : Float64Tensor, t : Float64) { x * -2.0 }
+      x0 = [1.0].to_tensor
+      times, states = CrySpace::Solver.rk45(f, x0, {0.0, 2.0})
+      times.last.should be_close(2.0, 1e-6)
+      states.last[0].value.should be_close(Math.exp(-4.0), 1e-4)
+    end
+
+    it "transforms system to Jordan canonical form" do
+      a = [[-1.0, 0.0], [0.0, -2.0]].to_tensor
+      b = [[1.0], [1.0]].to_tensor
+      c = [[1.0, 1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      sys_j, t_mat = sys.to_jordan_form
+      sys_j.n_states.should eq(2)
+      sys_j.poles.sort_by(&.real)[0].real.should be_close(-2.0, 1e-4)
+      sys_j.poles.sort_by(&.real)[1].real.should be_close(-1.0, 1e-4)
+    end
+
+    it "runs LuenbergerObserver estimation" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      l = [[5.0]].to_tensor
+      
+      obs = CrySpace::LuenbergerObserver.new(sys, l, x0_hat: [[0.0]].to_tensor)
+      obs.x_hat[0, 0].value.should eq(0.0)
+
+      x_new = obs.update_discrete([[1.0]].to_tensor, [[1.0]].to_tensor)
+      x_new[0, 0].value.should_not be_nil
+
+      obs.x_hat[0, 0] = 0.0
+      x_new_c = obs.update_continuous([[1.0]].to_tensor, [[1.0]].to_tensor, 0.1)
+      x_new_c[0, 0].value.should_not be_nil
+    end
+
+    it "generates step and Bode response plots without crashing" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      step_path = "./scratch/test_step_plot.html"
+      bode_path = "./scratch/test_bode_plot.html"
+      
+      sys.step_plot(step_path, n_steps: 10)
+      sys.bode_plot(bode_path)
+
+      File.exists?(step_path).should be_true
+      File.exists?(bode_path).should be_true
+
+      File.delete(step_path)
+      File.delete(bode_path)
+    end
   end

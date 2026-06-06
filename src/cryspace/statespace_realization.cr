@@ -625,5 +625,35 @@ module CrySpace
       
       StateSpace.new(ar, br, cr, dr, @dt)
     end
+
+    # Computes Jordan canonical (modal block-diagonal) form and the transformation matrix T.
+    def to_jordan_form : Tuple(StateSpace, Float64Tensor)
+      n = n_states
+      w, v = @a.eig_c
+      
+      t_matrix = Float64Tensor.zeros([n, n])
+      col = 0
+      while col < n
+        is_complex = w.to_unsafe[col].imag.abs > 1e-9
+        if is_complex
+          n.times do |row|
+            t_matrix.to_unsafe[row * n + col] = v.to_unsafe[col * n + row]
+            t_matrix.to_unsafe[row * n + col + 1] = v.to_unsafe[(col + 1) * n + row]
+          end
+          col += 2
+        else
+          n.times do |row|
+            t_matrix.to_unsafe[row * n + col] = v.to_unsafe[col * n + row]
+          end
+          col += 1
+        end
+      end
+      
+      t_inv = t_matrix.inv
+      a_j = t_inv.matmul(@a).matmul(t_matrix)
+      b_j = t_inv.matmul(@b)
+      c_j = @c.matmul(t_matrix)
+      {StateSpace.new(a_j, b_j, c_j, @d, @dt), t_matrix}
+    end
   end
 end

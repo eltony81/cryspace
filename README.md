@@ -62,6 +62,10 @@
   - Non-linear Estimators: Extended Kalman Filter (`ExtendedKalmanFilter`) and Unscented Kalman Filter (`UnscentedKalmanFilter`).
   - Trajectory Optimization: Iterative LQR (`ilqr`) solver.
   - Adaptive Control: Model Reference Adaptive Control (`mrac_simulate`).
+  - Runge-Kutta-Fehlberg 4(5) Adaptive ODE Solver (`rk45`).
+  - Jordan Canonical Form Transformation (`to_jordan_form`).
+  - Luenberger Observer (`LuenbergerObserver`) class supporting continuous RK4 integration and discrete-time state updates.
+  - Interactive SVG/HTML plotting dashboards: Step Response (`step_plot`) and Bode Diagram (`bode_plot`) using Chart.js CDN.
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -1067,6 +1071,45 @@ Computes complex gain describing function for mechanical gear play/backlash:
 ```crystal
 # Complex describing function gain for amplitude 2.0, backlash width 0.5
 df_gain = CrySpace::AdaptiveNonlinear.describing_function_backlash(2.0, 0.5)
+```
+
+#### CCCC. Runge-Kutta-Fehlberg 4(5) Adaptive ODE Solver (`rk45`)
+Solve differential equations adaptively based on error tolerance:
+```crystal
+# dx/dt = -2x
+f = ->(x : Float64Tensor, t : Float64) { x * -2.0 }
+x0 = [1.0].to_tensor
+times, states = CrySpace::Solver.rk45(f, x0, {0.0, 2.0}, tol: 1e-6)
+```
+
+#### DDDD. Jordan Canonical Form Realization (`to_jordan_form`)
+Computes the modal state transformation and diagonalizes (or block-diagonalizes for complex eigenvalues) the system matrices:
+```crystal
+# Get Jordan Canonical Form and transformation matrix T
+sys_jordan, t_matrix = sys.to_jordan_form
+```
+
+#### EEEE. Luenberger Observer Estimation (`LuenbergerObserver`)
+Tracks state estimation for LTI continuous and discrete systems:
+```crystal
+# Initialize Luenberger Observer
+observer = CrySpace::LuenbergerObserver.new(sys, l_gain, x0_hat: [[0.0]].to_tensor)
+
+# Continuous update (propagating observer via RK4)
+observer.update_continuous(y, u, dt)
+
+# Discrete update (propagating observer via algebraic update)
+observer.update_discrete(y, u)
+```
+
+#### FFFF. Interactive Plotting Dashboards (`step_plot` and `bode_plot`)
+Generate fully self-contained HTML/Chart.js plotting dashboards for systems or transfer functions:
+```crystal
+# Generate Step Response HTML dashboard
+sys.step_plot("step_response.html")
+
+# Generate Bode Diagram (magnitude & phase) HTML dashboard
+sys.bode_plot("bode_response.html")
 ```
 
 ## Testing
