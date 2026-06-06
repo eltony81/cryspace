@@ -10,7 +10,7 @@
 This is that journey. Every step uses a real CrySpace function. Every result comes
 from running [`36_mega_usecase_storyboard.cr`](36_mega_usecase_storyboard.cr).
 
-**→ Open [`suspension_storyboard.html`](suspension_storyboard.html) in your browser for the interactive version with live charts, equations, and code.**
+**→ [▶ Open Interactive Storyboard](https://htmlpreview.github.io/?https://github.com/eltony81/cryspace/blob/main/examples/suspension_storyboard.html)** — rendered in your browser with live charts, equations, and code.
 
 ---
 
