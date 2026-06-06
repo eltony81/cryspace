@@ -111,25 +111,50 @@ module CrySpace
       StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
     end
 
-    def sample(dt : Float64)
+    def sample(dt : Float64, method : Symbol = :zoh, alpha : Float64 = 0.5)
       curr_dt = @dt
       if curr_dt && curr_dt > 0
         raise "System is already discrete"
       end
       
-      ad = (@a * dt).expm
-      
-      # Bd = dt * (I + A*dt/2! + A^2*dt^2/3! + ...) * B
-      n = n_states
-      bd_term = Float64Tensor.identity(n)
-      sum_term = Float64Tensor.identity(n)
-      (1..15).each do |i|
-        bd_term = bd_term.matmul(@a * dt) / (i + 1).to_f
-        sum_term = sum_term + bd_term
+      if method == :zoh
+        ad = (@a * dt).expm
+        
+        n = n_states
+        bd_term = Float64Tensor.identity(n)
+        sum_term = Float64Tensor.identity(n)
+        (1..15).each do |i|
+          bd_term = bd_term.matmul(@a * dt) / (i + 1).to_f
+          sum_term = sum_term + bd_term
+        end
+        bd = sum_term.matmul(@b) * dt
+        
+        StateSpace.new(ad, bd, @c, @d, dt)
+      elsif method == :gbt || method == :bilinear || method == :tustin
+        gbt_alpha = (method == :bilinear || method == :tustin) ? 0.5 : alpha
+        
+        n = n_states
+        identity_n = Float64Tensor.identity(n)
+        
+        # M = (I - alpha * dt * A)^-1
+        m = (identity_n - @a * (gbt_alpha * dt)).inv
+        
+        # Ad = M * (I + (1 - alpha) * dt * A)
+        ad = m.matmul(identity_n + @a * ((1.0 - gbt_alpha) * dt))
+        
+        # Bd = M * B * dt
+        bd = m.matmul(@b) * dt
+        
+        # Cd = C * M
+        cd = @c.matmul(m)
+        
+        # Dd = D + alpha * dt * C * M * B
+        dd = @d + @c.matmul(m).matmul(@b) * (gbt_alpha * dt)
+        
+        StateSpace.new(ad, bd, cd, dd, dt)
+      else
+        raise ArgumentError.new("Discretization method must be :zoh, :gbt, :bilinear, or :tustin")
       end
-      bd = sum_term.matmul(@b) * dt
-      
-      StateSpace.new(ad, bd, @c, @d, dt)
     end
 
     def step_response(n_steps = 100)
@@ -998,6 +1023,127 @@ module CrySpace
       end
       
       StateSpace.new(ac, bc, @c, @d, nil)
+    end
+
+    # Computes a balanced truncation of the system.
+    # Returns a reduced-order StateSpace system of size `orders`.
+    def balred(orders : Int32)
+      if orders > n_states
+        raise ArgumentError.new("Reduced order must be less than or equal to current order")
+      end
+      if orders <= 0
+        raise ArgumentError.new("Reduced order must be greater than 0")
+      end
+      
+      wc = gram(:c)
+      wo = gram(:o)
+      
+      # Step 2: Compute SVD of Gramians to find Cholesky-like factors
+      uc, sc, vct = wc.svd
+      uo, so, vot = wo.svd
+      
+      n = n_states
+      lc = Float64Tensor.zeros([n, n])
+      lo = Float64Tensor.zeros([n, n])
+      
+      n.times do |i|
+        s_c_val = Math.sqrt(sc[i].value.abs)
+        s_o_val = Math.sqrt(so[i].value.abs)
+        
+        n.times do |j|
+          lc[j, i] = uc[j, i] * s_c_val
+          lo[j, i] = uo[j, i] * s_o_val
+        end
+      end
+      
+      # Step 3: SVD of Lo^T * Lc
+      product = lo.transpose.matmul(lc)
+      u_p, s_p, vt_p = product.svd
+      v_p = vt_p.transpose
+      
+      # Step 4: Construct transformation matrices T and T_inv
+      t_matrix = Float64Tensor.zeros([n, n])
+      t_inv = Float64Tensor.zeros([n, n])
+      
+      n.times do |i|
+        sig_val = s_p[i].value
+        sig_factor = sig_val.abs > 1e-12 ? 1.0 / Math.sqrt(sig_val) : 0.0
+        
+        # Column i of T = Lc * col_i(V) * sig_factor
+        n.times do |r|
+          sum = 0.0
+          n.times do |k|
+            sum += lc[r, k].value * v_p[k, i].value
+          end
+          t_matrix[r, i] = sum * sig_factor
+        end
+        
+        # Row i of T_inv = sig_factor * col_i(U)^T * Lo^T
+        n.times do |c_idx|
+          sum = 0.0
+          n.times do |k|
+            sum += u_p[k, i].value * lo[c_idx, k].value
+          end
+          t_inv[i, c_idx] = sum * sig_factor
+        end
+      end
+      
+      # Transform full system to balanced realization
+      ab = t_inv.matmul(@a).matmul(t_matrix)
+      bb = t_inv.matmul(@b)
+      cb = @c.matmul(t_matrix)
+      
+      # Step 5: Truncate to first `orders` states
+      ar = Float64Tensor.zeros([orders, orders])
+      br = Float64Tensor.zeros([orders, n_inputs])
+      cr = Float64Tensor.zeros([n_outputs, orders])
+      
+      orders.times do |r|
+        orders.times do |c_idx|
+          ar[r, c_idx] = ab[r, c_idx].value
+        end
+        n_inputs.times do |c_idx|
+          br[r, c_idx] = bb[r, c_idx].value
+        end
+      end
+      n_outputs.times do |r|
+        orders.times do |c_idx|
+          cr[r, c_idx] = cb[r, c_idx].value
+        end
+      end
+      
+      StateSpace.new(ar, br, cr, @d, @dt)
+    end
+
+    # Designs a Linear Quadratic Gaussian (LQG) controller.
+    # Returns a StateSpace controller that takes output measurements y
+    # as input and produces control signals u.
+    def lqg(k_gain : Float64Tensor, l_gain : Float64Tensor) : StateSpace
+      n = n_states
+      m = n_inputs
+      p = n_outputs
+      
+      bk = @b.matmul(k_gain)
+      lc = l_gain.matmul(@c)
+      ldk = l_gain.matmul(@d).matmul(k_gain)
+      
+      a_lqg = @a - bk - lc + ldk
+      b_lqg = l_gain
+      c_lqg = k_gain
+      d_lqg = Float64Tensor.zeros([m, p])
+      
+      StateSpace.new(a_lqg, b_lqg, c_lqg, d_lqg, @dt)
+    end
+
+    # Returns Nichols data: {omega, magnitudes (dB), phases (degrees)} for a SISO system.
+    def nichols_data(omega : Float64Tensor)
+      _, db, deg = bode_data(omega)
+      {omega, db, deg}
+    end
+
+    # Unified stability margins analyzer (alias for stability_margins)
+    def margin
+      stability_margins
     end
 
     def to_s(io)

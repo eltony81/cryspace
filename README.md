@@ -21,9 +21,12 @@
   - Bode stability margins (`stability_margins`) including Gain Margin and Phase Margin.
   - State-space realizations: convert systems to Observability Canonical Form (`to_observability_form`) and Modal Form (`to_modal_form`).
   - Root Locus: calculate closed-loop pole trajectories under varying gain (`root_locus`).
-  - Frequency response data: Bode (`bode_data`) and Nyquist (`nyquist_data`) data generators.
+  - Frequency response data: Bode (`bode_data`), Nyquist (`nyquist_data`), and Nichols (`nichols_data`) data generators.
   - Discrete-to-Continuous time conversion (`to_continuous` / D2C) using matrix logarithm.
-  - Anti-windup PID controller: PID controller with actuator saturation limits and clamping anti-windup (`PIDController`).
+  - Actuator-limited PID controller with anti-windup clamping (`PIDController`).
+  - Tustin (Bilinear) and Generalized Bilinear Discretization (`sample(dt, method: :tustin)`).
+  - Balanced Truncation Model Reduction (`balred`).
+  - Optimal Linear Quadratic Gaussian (`lqg`) controller synthesis.
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
@@ -530,6 +533,43 @@ Convert a discrete-time system back to continuous-time using the robust state-sp
 ```crystal
 # sys_discrete has a defined sampling time dt
 sys_continuous = sys_discrete.to_continuous
+```
+
+#### R. GBT / Tustin (Bilinear) Discretization
+Discretize a system using Tustin's bilinear approximation or GBT with a custom weighting parameter `alpha`.
+```crystal
+# Discretize continuous system using Bilinear (Tustin) method
+sys_discrete = sys.sample(dt: 0.05, method: :tustin)
+
+# Discretize using Generalized Bilinear Transform with custom alpha (e.g. Backward Euler alpha=1.0)
+sys_discrete_gbt = sys.sample(dt: 0.05, method: :gbt, alpha: 1.0)
+```
+
+#### S. Balanced Truncation Model Reduction (`balred`)
+Reduce the model order of a stable state-space system by balancing controllability/observability Gramians and truncating states with small energy.
+```crystal
+# Reduce system order to 2 states
+sys_reduced = sys.balred(orders: 2)
+```
+
+#### T. Linear Quadratic Gaussian Synthesis (`lqg`)
+Design optimal output-feedback controllers by combining LQR feedback gain `K` and Kalman Filter estimator gain `L`.
+```crystal
+# Synthesize LQG controller (returns a StateSpace controller)
+lqg_controller = sys.lqg(k_gain, l_gain)
+```
+
+#### U. Nichols Plot Data (`nichols_data`)
+Generate frequency response data for Nichols plots (gain magnitude in dB and phase in degrees).
+```crystal
+omega = [0.1, 1.0, 10.0].to_tensor
+w_out, db, deg = sys.nichols_data(omega)
+```
+
+#### V. Unified Margins Shortcut (`margin`)
+A quick alias to get gain and phase stability margins.
+```crystal
+gm, gm_db, pm, w_gc, w_pc = sys.margin
 ```
 
 

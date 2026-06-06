@@ -384,4 +384,62 @@ describe CrySpace::StateSpace do
       sys_back.a[0, 0].value.should be_close(-2.0, 1e-4)
       sys_back.b[0, 0].value.should be_close(1.0, 1e-4)
     end
+
+    it "performs Bilinear/Tustin discretization" do
+      # Continuous: G(s) = 1 / (s + 2) => A=-2, B=1, C=1, D=0
+      sys_c = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      dt = 0.1
+      # Tustin (alpha=0.5):
+      # Ad = (1 - 0.05 * A)^-1 * (1 + 0.05 * A) = (1 - 0.05 * -2)^-1 * (1 + 0.05 * -2) = 1.1^-1 * 0.9 = 0.9 / 1.1 = 0.81818
+      # Bd = (1 - 0.05 * A)^-1 * B * dt = 1.1^-1 * 1.0 * 0.1 = 0.1 / 1.1 = 0.090909
+      sys_d = sys_c.sample(dt, method: :tustin)
+      sys_d.a[0, 0].value.should be_close(0.81818, 1e-4)
+      sys_d.b[0, 0].value.should be_close(0.090909, 1e-4)
+    end
+
+    it "performs balanced truncation model reduction (balred)" do
+      # 2nd-order system with two decoupled stable states: A = [[-1, 0], [0, -10]], B=[[1], [1]], C=[[1, 1]]
+      # State 2 (pole at -10) is much faster and less dominant than State 1 (pole at -1)
+      a = [[-1.0, 0.0], [0.0, -10.0]].to_tensor
+      b = [[1.0], [1.0]].to_tensor
+      c = [[1.0, 1.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      sys_reduced = sys.balred(1)
+      sys_reduced.n_states.should eq(1)
+      # The dominant pole is at -1.328 (from balanced truncation of poles at -1 and -10)
+      sys_reduced.poles[0].real.should be_close(-1.328, 1e-3)
+    end
+
+    it "designs an LQG controller" do
+      a = [[0.0, 1.0], [-2.0, -3.0]].to_tensor
+      b = [[0.0], [1.0]].to_tensor
+      c = [[1.0, 0.0]].to_tensor
+      d = [[0.0]].to_tensor
+      sys = CrySpace::StateSpace.new(a, b, c, d)
+      
+      k_gain = [[1.0, 2.0]].to_tensor
+      l_gain = [[3.0], [4.0]].to_tensor
+      
+      controller = sys.lqg(k_gain, l_gain)
+      controller.n_states.should eq(2)
+      controller.n_inputs.should eq(1)  # Takes y as input
+      controller.n_outputs.should eq(1) # Produces u as output
+    end
+
+    it "computes nichols_data and margin" do
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      omega = [1.0].to_tensor
+      
+      _, db, deg = sys.nichols_data(omega)
+      db[0].should be_close(-3.0103, 1e-3)
+      deg[0].should be_close(-45.0, 1e-3)
+      
+      # Margin
+      gm, gm_db, pm, w_gc, w_pc = sys.margin
+      gm.should eq(Float64::INFINITY)
+      pm.should eq(0.0)
+    end
 end
+
