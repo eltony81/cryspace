@@ -707,9 +707,41 @@ k_h2, p_h2 = sys.h2syn(c_performance, d_performance)
 k_hinf, p_hinf = sys.hinfsyn(c_performance, d_performance, gamma: 1.5)
 ```
 
+#### LL. Step Response Performance Metrics (`stepinfo`)
+Analyzes the step response of a SISO system to extract key transient response metrics (rise time, settling time, overshoot, peak value, peak time, steady-state value):
+```crystal
+# Run step response metrics analysis
+info = sys.stepinfo(n_steps: 300, settling_threshold: 0.02)
+puts "Rise Time: #{info.rise_time}s"
+puts "Settling Time: #{info.settling_time}s"
+puts "Overshoot: #{info.overshoot}%"
+puts "Peak: #{info.peak} at #{info.peak_time}s"
+```
 
+#### MM. Lead/Lag Compensator Design
+Easily design classical Lead or Lag compensators in TransferFunction form:
+```crystal
+# Lead compensator: G_lead(s) = K * (s + zero) / (s + pole) (zero < pole)
+lead = CrySpace::TransferFunction.lead_compensator(gain: 2.0, zero: 1.0, pole: 10.0)
 
+# Lag compensator: G_lag(s) = K * (s + zero) / (s + pole) (zero > pole)
+lag = CrySpace::TransferFunction.lag_compensator(gain: 3.0, zero: 5.0, pole: 0.5)
+```
 
+#### NN. Closed-Loop Observer Simulation (`simulate_observer`)
+Simulates the true state space system coupled with a state estimator observer (Kalman Filter or LQE) under state feedback $u = u_{ref} - K x_{est}$. You can optionally inject process noise and measurement noise:
+```crystal
+# Simulate observer dynamics with covariance matrices
+t_out, x_out, x_est_out, y_out, u_out = sys.simulate_observer(
+  t,
+  k_gain,
+  l_gain,
+  x0: x0,
+  x0_est: x0_est,
+  process_noise_cov: q_cov,
+  measure_noise_cov: r_cov
+)
+```
 
 ## Testing
 

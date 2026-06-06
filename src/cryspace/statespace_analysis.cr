@@ -2,6 +2,24 @@ require "num"
 
 module CrySpace
   class StateSpace
+    def is_stable?
+      p = poles
+      n = p.size
+      stable = true
+      
+      n.times do |i|
+        val = p[i]
+        if @dt.nil? || @dt == 0
+          # Continuous: Re(poles) < 0
+          stable = false if val.real >= 0
+        else
+          # Discrete: |poles| < 1
+          stable = false if val.abs >= 1.0
+        end
+      end
+      stable
+    end
+
     # Evaluates system response G(jw) at a set of frequency points.
     # Returns a Tensor of Complex numbers of shape [n_outputs, n_inputs, omega.size].
     def freqresp(omega : Float64Tensor)
@@ -150,26 +168,6 @@ module CrySpace
       p_vec.reshape([n, n])
     end
 
-    # Solves discrete-time Lyapunov equation: A*P*A^T - P + Q = 0
-    # Returns P.
-    def dlyap(q : Float64Tensor)
-      n = n_states
-      eye_nn = Float64Tensor.identity(n * n)
-      m_lhs = @a.kron(@a) - eye_nn
-      q_vec = q.reshape([n * n, 1])
-      p_vec = m_lhs.solve(-q_vec)
-      p_vec.reshape([n, n])
-    end
-
-    # Solves continuous-time Linear Quadratic Regulator (LQR) controller: u = -Kx
-    # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
-    def lqr(q : Float64Tensor, r : Float64Tensor)
-      p = care(q, r)
-      k = r.inv.matmul(@b.transpose).matmul(p)
-      a_cl = @a - @b.matmul(k)
-      {k, p, a_cl.eigvals_c.to_a}
-    end
-
     # Solves the Discrete-Time Algebraic Riccati Equation (DARE) using iterative method:
     # A^T * P * A - P - A^T * P * B * (R + B^T * P * B)^-1 * B^T * P * A + Q = 0
     # Returns P.
@@ -198,99 +196,82 @@ module CrySpace
       p
     end
 
-    # Solves discrete-time Linear Quadratic Regulator (DLQR) controller: u = -Kx
-    # Returns: {K (matrix), P (matrix), closed_loop_poles (Array(Complex))}
-    def dlqr(q : Float64Tensor, r : Float64Tensor)
-      p = dare(q, r)
-      b_t = @b.transpose
-      temp = r + b_t.matmul(p).matmul(@b)
-      k = temp.inv.matmul(b_t).matmul(p).matmul(@a)
-      a_cl = @a - @b.matmul(k)
-      {k, p, a_cl.eigvals_c.to_a}
-    end
-
-    # Synthesizes an optimal H2 state-feedback control gain K.
-    def h2syn(c_z : Float64Tensor, d_zu : Float64Tensor) : Tuple(Float64Tensor, Float64Tensor)
-      q = c_z.transpose.matmul(c_z)
-      r = d_zu.transpose.matmul(d_zu)
-      p = care(q, r)
-      k = r.inv.matmul(@b.transpose).matmul(p)
-      {k, p}
-    end
-
-    # Synthesizes a robust suboptimal H-infinity state-feedback control gain K for attenuation level gamma.
-    def hinfsyn(c_z : Float64Tensor, d_zu : Float64Tensor, gamma : Float64) : Tuple(Float64Tensor, Float64Tensor)
+    # Solves discrete-time Lyapunov equation: A*P*A^T - P + Q = 0
+    # Returns P.
+    def dlyap(q : Float64Tensor)
       n = n_states
-      q = c_z.transpose.matmul(c_z)
-      r = d_zu.transpose.matmul(d_zu)
-      
-      b_w = Float64Tensor.identity(n)
-      r_inv = r.inv
-      b_term = @b.matmul(r_inv).matmul(@b.transpose)
-      w_term = b_w.matmul(b_w.transpose) * (1.0 / (gamma * gamma))
-      g = b_term - w_term
-      
-      h = Float64Tensor.zeros([2 * n, 2 * n])
-      n.times do |i|
-        n.times do |j|
-          h.to_unsafe[i * (2 * n) + j] = @a.to_unsafe[i * n + j]
-          h.to_unsafe[i * (2 * n) + n + j] = -g.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + j] = -q.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + n + j] = -@a.to_unsafe[j * n + i]
-        end
+      eye_nn = Float64Tensor.identity(n * n)
+      m_lhs = @a.kron(@a) - eye_nn
+      q_vec = q.reshape([n * n, 1])
+      p_vec = m_lhs.solve(-q_vec)
+      p_vec.reshape([n, n])
+    end
+
+    def root_locus(gains : Float64Tensor)
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Root locus only supported for SISO systems")
       end
       
-      w_eig, v_eig = h.eig_c
-      v_c = Tensor(Complex, CPU(Complex)).zeros([2 * n, 2 * n])
-      col = 0
-      while col < 2 * n
-        is_complex = w_eig.to_unsafe[col].imag.abs > 1e-12
-        if is_complex
-          (2 * n).times do |row|
-            real_val = v_eig.to_unsafe[col * (2 * n) + row]
-            imag_val = v_eig.to_unsafe[(col + 1) * (2 * n) + row]
-            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(real_val, imag_val)
-            v_c.to_unsafe[row * (2 * n) + col + 1] = Complex.new(real_val, -imag_val)
-          end
-          col += 2
-        else
-          (2 * n).times do |row|
-            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(v_eig.to_unsafe[col * (2 * n) + row], 0.0)
-          end
-          col += 1
-        end
+      n = n_states
+      m_gains = gains.size
+      res = Array(Array(Complex)).new(m_gains)
+      
+      m_gains.times do |i|
+        k = gains.to_unsafe[i]
+        a_cl = @a - @b.matmul(@c) * k
+        res << a_cl.eigvals_c.to_a
+      end
+      res
+    end
+
+    def bode_data(omega : Float64Tensor)
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Bode data only supported for SISO systems")
+      end
+
+      h = freqresp(omega)
+      n_points = omega.size
+      mags_db = Array(Float64).new(n_points)
+      phases_deg = Array(Float64).new(n_points)
+      
+      wrap_phase = ->(p : Float64) {
+        val = p % (2.0 * Math::PI)
+        val -= 2.0 * Math::PI if val > Math::PI
+        val += 2.0 * Math::PI if val < -Math::PI
+        val
+      }
+
+      n_points.times do |i|
+        val = h.to_unsafe[i]
+        mags_db << 20.0 * Math.log10(val.abs)
+        phases_deg << wrap_phase.call(Math.atan2(val.imag, val.real)) * 180.0 / Math::PI
       end
       
-      stable_indices = Array(Int32).new
-      w_eig.size.times do |i|
-        if w_eig.to_unsafe[i].real < 0.0
-          stable_indices << i
-        end
+      {omega, mags_db, phases_deg}
+    end
+
+    def nyquist_data(omega : Float64Tensor)
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("Nyquist data only supported for SISO systems")
+      end
+
+      h = freqresp(omega)
+      n_points = omega.size
+      real_parts = Array(Float64).new(n_points)
+      imag_parts = Array(Float64).new(n_points)
+      
+      n_points.times do |i|
+        val = h.to_unsafe[i]
+        real_parts << val.real
+        imag_parts << val.imag
       end
       
-      if stable_indices.size != n
-        raise ArgumentError.new("Could not find stable subspace for H-infinity synthesis at gamma = #{gamma}")
-      end
-      
-      u1 = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      u2 = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      
-      n.times do |col_idx|
-        orig_col = stable_indices[col_idx]
-        n.times do |row_idx|
-          u1.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[row_idx * (2 * n) + orig_col]
-          u2.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[(n + row_idx) * (2 * n) + orig_col]
-        end
-      end
-      
-      p_complex = u2.matmul(u1.inv)
-      p_real = Float64Tensor.zeros([n, n])
-      (n * n).times do |i|
-        p_real.to_unsafe[i] = p_complex.to_unsafe[i].real
-      end
-      
-      k = r_inv.matmul(@b.transpose).matmul(p_real)
-      {k, p_real}
+      {real_parts, imag_parts}
+    end
+
+    def nichols_data(omega : Float64Tensor)
+      _, db, deg = bode_data(omega)
+      {omega, db, deg}
     end
 
     # Computes classical gain and phase margins (Bode margins) for a SISO system.

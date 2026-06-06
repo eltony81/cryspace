@@ -249,7 +249,15 @@ def to_statespace
       io << "den = " << @den << "\n"
       io << "dt = " << @dt if @dt
     end
-    
-    # TODO: to_statespace, +, *, feedback
+
+    def self.lead_compensator(gain : Float64, zero : Float64, pole : Float64) : TransferFunction
+      raise ArgumentError.new("Zero must be less than pole for a lead compensator") if zero >= pole
+      TransferFunction.new([gain, gain * zero].to_tensor, [1.0, pole].to_tensor)
+    end
+
+    def self.lag_compensator(gain : Float64, zero : Float64, pole : Float64) : TransferFunction
+      raise ArgumentError.new("Zero must be greater than pole for a lag compensator") if zero <= pole
+      TransferFunction.new([gain, gain * zero].to_tensor, [1.0, pole].to_tensor)
+    end
   end
 end

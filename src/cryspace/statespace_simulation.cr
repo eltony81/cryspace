@@ -162,5 +162,224 @@ module CrySpace
     def lsim(u : Float64Tensor, t : Float64Tensor, x0 : Float64Tensor? = nil, method = :rk4)
       simulate(t, x0: x0, u: u, method: method)
     end
+
+    struct StepInfo
+      property rise_time : Float64
+      property settling_time : Float64
+      property overshoot : Float64
+      property peak : Float64
+      property peak_time : Float64
+      property steady_state_value : Float64
+
+      def initialize(@rise_time, @settling_time, @overshoot, @peak, @peak_time, @steady_state_value)
+      end
+    end
+
+    # Analyzes the step response of a SISO system and returns step response performance metrics.
+    def stepinfo(n_steps = 500, settling_threshold = 0.02) : StepInfo
+      unless n_inputs == 1 && n_outputs == 1
+        raise ArgumentError.new("stepinfo only supported for SISO systems")
+      end
+
+      # First run a step response simulation
+      t, _, y = step_response(n_steps)
+      
+      # Convert y to Array(Float64)
+      y_siso = y.map { |yi| yi[0, 0].value }
+      
+      # Final value is our steady-state estimation.
+      # Average the last 10% to smooth out oscillations if any.
+      last_n = (n_steps * 0.1).to_i
+      last_n = 1 if last_n < 1
+      y_ss = 0.0
+      last_n.times { |i| y_ss += y_siso[n_steps - 1 - i] }
+      y_ss /= last_n
+      
+      y_max = y_siso.max
+      y_min = y_siso.min
+      
+      # Find peak
+      peak = y_max
+      if y_min.abs > y_max.abs
+        peak = y_min
+      end
+      
+      peak_idx = y_siso.index(peak) || 0
+      peak_time = t[peak_idx]
+      
+      overshoot = 0.0
+      if y_ss.abs > 1e-9
+        overshoot = 100.0 * (peak - y_ss) / y_ss
+        overshoot = 0.0 if overshoot < 0.0
+      end
+      
+      # Rise time: 10% to 90% of steady-state value
+      t_10 = nil
+      t_90 = nil
+      
+      n_steps.times do |i|
+        val = y_siso[i]
+        if y_ss >= 0
+          if t_10.nil? && val >= 0.1 * y_ss
+            t_10 = t[i]
+          end
+          if t_90.nil? && val >= 0.9 * y_ss
+            t_90 = t[i]
+          end
+        else
+          if t_10.nil? && val <= 0.1 * y_ss
+            t_10 = t[i]
+          end
+          if t_90.nil? && val <= 0.9 * y_ss
+            t_90 = t[i]
+          end
+        end
+      end
+      
+      rise_time = if t_10 && t_90
+        t_90 - t_10
+      else
+        0.0
+      end
+      
+      # Settling time: search backwards for the last time the output is outside the threshold band
+      err_bound = (y_ss * settling_threshold).abs
+      settling_idx = 0
+      (n_steps - 1).downto(0) do |i|
+        if (y_siso[i] - y_ss).abs > err_bound
+          settling_idx = i + 1
+          break
+        end
+      end
+      
+      settling_idx = n_steps - 1 if settling_idx >= n_steps
+      settling_time = t[settling_idx]
+      
+      StepInfo.new(rise_time, settling_time, overshoot, peak, peak_time, y_ss)
+    end
+
+    # Simulates coupled state-feedback controller with an observer/estimator.
+    # Optionally adds process and measurement Gaussian noises under covariance matrices.
+    def simulate_observer(
+      t : Float64Tensor,
+      k_gain : Float64Tensor,
+      l_gain : Float64Tensor,
+      x0 : Float64Tensor? = nil,
+      x0_est : Float64Tensor? = nil,
+      u_ref : Float64Tensor? = nil,
+      process_noise_cov : Float64Tensor? = nil,
+      measure_noise_cov : Float64Tensor? = nil
+    )
+      n_steps = t.size
+      n = n_states
+      m = n_inputs
+      p = n_outputs
+      
+      x_current = x0.nil? ? Float64Tensor.zeros([n, 1]) : x0.dup
+      x_est_current = x0_est.nil? ? Float64Tensor.zeros([n, 1]) : x0_est.dup
+      u_ref_val = u_ref.nil? ? Float64Tensor.zeros([m, 1]) : u_ref
+      
+      x_matrix = Float64Tensor.new([n_steps, n])
+      x_est_matrix = Float64Tensor.new([n_steps, n])
+      y_matrix = Float64Tensor.new([n_steps, p])
+      u_matrix = Float64Tensor.new([n_steps, m])
+      
+      randn = ->() {
+        u1 = Random.rand
+        u2 = Random.rand
+        Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math::PI * u2)
+      }
+      
+      cholesky = ->(cov : Float64Tensor) {
+        dim = cov.shape[0]
+        l = Float64Tensor.zeros([dim, dim])
+        is_diagonal = true
+        dim.times do |r|
+          dim.times do |c|
+            if r != c && cov[r, c].value.abs > 1e-9
+              is_diagonal = false
+            end
+          end
+        end
+        
+        if is_diagonal
+          dim.times do |r|
+            l[r, r] = Math.sqrt({cov[r, r].value, 0.0}.max)
+          end
+        else
+          dim.times do |i|
+            (i + 1).times do |j|
+              s = 0.0
+              j.times do |k|
+                s += l[i, k].value * l[j, k].value
+              end
+              if i == j
+                val = cov[i, i].value - s
+                l[i, j] = Math.sqrt(val > 0.0 ? val : 0.0)
+              else
+                l_jj = l[j, j].value
+                l[i, j] = l_jj > 1e-12 ? (cov[i, j].value - s) / l_jj : 0.0
+              end
+            end
+          end
+        end
+        l
+      }
+      
+      w_l = process_noise_cov.nil? ? nil : cholesky.call(process_noise_cov)
+      v_l = measure_noise_cov.nil? ? nil : cholesky.call(measure_noise_cov)
+      
+      n_steps.times do |i|
+        u_ref_step = Float64Tensor.zeros([m, 1])
+        if u_ref_val.rank == 2 && u_ref_val.shape[1] == n_steps
+          m.times { |r| u_ref_step[r, 0] = u_ref_val[r, i] }
+        else
+          u_ref_step = u_ref_val
+        end
+        
+        u = u_ref_step - k_gain.matmul(x_est_current)
+        
+        w = Float64Tensor.zeros([n, 1])
+        if w_l
+          n.times do |r|
+            w[r, 0] = randn.call
+          end
+          w = w_l.matmul(w)
+        end
+        
+        v = Float64Tensor.zeros([p, 1])
+        if v_l
+          p.times do |r|
+            v[r, 0] = randn.call
+          end
+          v = v_l.matmul(v)
+        end
+        
+        y = @c.matmul(x_current) + @d.matmul(u) + v
+        
+        n.times { |j| x_matrix[i, j] = x_current[j, 0].value }
+        n.times { |j| x_est_matrix[i, j] = x_est_current[j, 0].value }
+        p.times { |j| y_matrix[i, j] = y[j, 0].value }
+        m.times { |j| u_matrix[i, j] = u[j, 0].value }
+        
+        if i < n_steps - 1
+          h = t.to_unsafe[i + 1] - t.to_unsafe[i]
+          
+          dx = @a.matmul(x_current) + @b.matmul(u)
+          dy_err = y - @c.matmul(x_est_current) - @d.matmul(u)
+          dx_est = @a.matmul(x_est_current) + @b.matmul(u) + l_gain.matmul(dy_err)
+          
+          if w_l
+            x_current = x_current + dx * h + w * Math.sqrt(h)
+          else
+            x_current = x_current + dx * h
+          end
+          
+          x_est_current = x_est_current + dx_est * h
+        end
+      end
+      
+      {t, x_matrix, x_est_matrix, y_matrix, u_matrix}
+    end
   end
 end

@@ -607,5 +607,48 @@ describe CrySpace::StateSpace do
       k_hinf, p_hinf = sys.hinfsyn(c_z, d_zu, gamma: 2.0)
       k_hinf[0, 0].value.should_not be_nil
     end
-end
 
+    it "computes stepinfo response metrics" do
+      # SISO System: G(s) = 1 / (s + 2)
+      # Step response: y(t) = 0.5 * (1 - e^(-2t))
+      # Steady state value is 0.5.
+      # Rise time (10% to 90%): 
+      # 0.1 * 0.5 = 0.05 => 1 - e^-2t1 = 0.1 => t1 = -ln(0.9)/2 ≈ 0.0526
+      # 0.9 * 0.5 = 0.45 => 1 - e^-2t2 = 0.9 => t2 = -ln(0.1)/2 ≈ 1.1513
+      # Rise time = t2 - t1 ≈ 1.0987 s.
+      sys = CrySpace::StateSpace.new([[-2.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      
+      info = sys.stepinfo(n_steps: 300)
+      info.steady_state_value.should be_close(0.5, 0.01)
+      info.rise_time.should be_close(1.0987, 0.15)
+      info.overshoot.should eq(0.0) # first-order system has no overshoot
+      info.peak.should be_close(0.5, 0.05)
+    end
+
+    it "simulates closed-loop observer dynamics" do
+      # System: G(s) = 1 / (s + 1)
+      sys = CrySpace::StateSpace.new([[-1.0]].to_tensor, [[1.0]].to_tensor, [[1.0]].to_tensor, [[0.0]].to_tensor)
+      
+      # Gains: K = 1.0, L = 5.0
+      k_gain = [[1.0]].to_tensor
+      l_gain = [[5.0]].to_tensor
+      
+      t = Float64Tensor.linear_space(0.0, 5.0, 100)
+      x0 = [[2.0]].to_tensor
+      x0_est = [[0.0]].to_tensor # initial estimation error is 2.0
+      
+      # Observer simulation without noise
+      t_out, x_out, x_est_out, y_out, u_out = sys.simulate_observer(t, k_gain, l_gain, x0: x0, x0_est: x0_est)
+      
+      # Estimated state should converge to true state
+      final_error = (x_out[99, 0].value - x_est_out[99, 0].value).abs
+      final_error.should be_close(0.0, 1e-3)
+      
+      # With noise
+      q = [[0.01]].to_tensor
+      r = [[0.01]].to_tensor
+      t_out2, x_out2, x_est_out2, y_out2, u_out2 = sys.simulate_observer(t, k_gain, l_gain, x0: x0, x0_est: x0_est, process_noise_cov: q, measure_noise_cov: r)
+      t_out2.size.should eq(100)
+      x_out2.shape[0].should eq(100)
+    end
+end

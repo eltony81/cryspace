@@ -57,4 +57,16 @@ describe CrySpace::TransferFunction do
     tf_parallel.den[1].value.should eq(2.0)
     tf_parallel.den[2].value.should eq(1.0)
   end
+
+  it "creates lead and lag compensators" do
+    lead = CrySpace::TransferFunction.lead_compensator(gain: 2.0, zero: 1.0, pole: 10.0)
+    lead.num[0].value.should be_close(2.0, 1e-9)
+    lead.num[1].value.should be_close(2.0, 1e-9)
+    lead.den[1].value.should be_close(10.0, 1e-9)
+
+    lag = CrySpace::TransferFunction.lag_compensator(gain: 3.0, zero: 5.0, pole: 0.5)
+    lag.num[0].value.should be_close(3.0, 1e-9)
+    lag.num[1].value.should be_close(15.0, 1e-9)
+    lag.den[1].value.should be_close(0.5, 1e-9)
+  end
 end
