@@ -1,6 +1,6 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.19.0-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.21.0-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
 
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
