@@ -145,6 +145,19 @@ Newton's Second Law for a mass $m$, spring stiffness $k$, and damping coefficien
 m\ddot{y} + c\dot{y} + ky = u
 ```
 
+Choosing the state variables as position $x_1 = y$ and velocity $x_2 = \dot{y}$, we can represent this second-order system in state-space form ($\dot{x} = Ax + Bu, y = Cx + Du$):
+```math
+\begin{bmatrix} \dot{y} \\ \ddot{y} \end{bmatrix} = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix} \begin{bmatrix} y \\ \dot{y} \end{bmatrix} + \begin{bmatrix} 0 \\ 1/m \end{bmatrix} u
+```
+```math
+y = \begin{bmatrix} 1 & 0 \end{bmatrix} \begin{bmatrix} y \\ \dot{y} \end{bmatrix} + \begin{bmatrix} 0 \end{bmatrix} u
+```
+
+Which gives the system matrices:
+```math
+A = \begin{bmatrix} 0 & 1 \\ -k/m & -c/m \end{bmatrix}, \quad B = \begin{bmatrix} 0 \\ 1/m \end{bmatrix}, \quad C = \begin{bmatrix} 1 & 0 \end{bmatrix}, \quad D = \begin{bmatrix} 0 \end{bmatrix}
+```
+
 **Implementation (Vectorized):**
 ```crystal
 m, k, c = 1.0, 10.0, 0.5
