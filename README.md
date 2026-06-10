@@ -140,6 +140,11 @@ end
 A classic 2-state matrix system representing a physical oscillator.
 
 **The Physical Setup:**
+
+<p align="center">
+  <img src="examples/mass_spring_damper.png" alt="Mass-Spring-Damper System" width="400">
+</p>
+
 Newton's Second Law for a mass $m$, spring stiffness $k$, and damping coefficient $c$ with an external force $u$:
 ```math
 m\ddot{y} + c\dot{y} + ky = u
