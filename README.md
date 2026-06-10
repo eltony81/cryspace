@@ -177,7 +177,21 @@ puts "Max position: #{pos.max.value}"
 This step-by-step guide shows how to model a physical system, design a PID controller, and simulate the closed-loop performance.
 
 #### Step 1: Define the Physical Plant (RLC)
-We model a second-order RLC circuit with Capacitor Voltage ($v_C$) and Inductor Current ($i_L$) as states.
+We model a second-order series RLC circuit with Capacitor Voltage ($v_C$) and Inductor Current ($i_L$) as states.
+
+<p align="center">
+  <img src="examples/rlc_circuit.png" alt="Series RLC Circuit and Differential Equations" width="450">
+</p>
+
+The continuous-time system dynamics are governed by the following differential equations:
+```math
+\begin{aligned}
+\frac{dv_C}{dt} &= \frac{1}{C} i_L \\
+\frac{di_L}{dt} &= -\frac{1}{L} v_C - \frac{R}{L} i_L + \frac{1}{L} u
+\end{aligned}
+```
+
+This can be written in state-space form ($\dot{x} = Ax + Bu$):
 ```math
 A = \begin{bmatrix} 0 & 1/C \\ -1/L & -R/L \end{bmatrix}, \quad B = \begin{bmatrix} 0 \\ 1/L \end{bmatrix}
 ```
