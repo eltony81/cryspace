@@ -29,7 +29,8 @@ The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling 
 - **State-Space Systems**: Create and manipulate LTI (Linear Time-Invariant) systems in state-space form ($\dot{x} = Ax + Bu, y = Cx + Du$).
 - **Transfer Functions**: Represent systems as ratios of polynomials.
 - **Vectorized Math & Serialization via Apache Arrow**:
-  - Run high-performance simulation trajectory math directly on the **ARROW** backend using vectorized C++ compute kernels.
+  - Run high-performance simulation trajectory math directly on the **ARROW** backend using vectorized C++ compute kernels. Passing an Arrow-backed time/input vector automatically offloads the simulation iterations (`simulate`) to the Arrow backend using zero-copy matrix promotion.
+  - In-place arithmetic operations (`add!`, `subtract!`, `multiply!`, `divide!`) and unary negation (`-`) on the Arrow backend leverage SIMD-vectorized C++ compute functions with zero GC memory allocations.
   - Log and save simulation run datasets ultra-fast to disk in memory-mapped columnar binary **Feather** files via `Arrow::FeatherWriter`.
 - **System Interconnections**:
   - Parallel connection (`+`)

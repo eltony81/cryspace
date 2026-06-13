@@ -49,6 +49,10 @@ t_vec = Float64Tensor.linear_space(0.0, 15.0, 1501)
 u_step = Float64Tensor.ones([1, 1501])
 
 # Simulate open loop and closed loop
+# If Arrow is enabled, convert the time and input vectors to the ARROW backend.
+# The simulation method will automatically detect this, place the plant/closed-loop
+# matrices onto Arrow (zero-copy), and execute simulation steps via the vectorized
+# Arrow Compute Engine with in-place math optimizations.
 {% if flag?(:arrow) %}
   t_vec = t_vec.arrow
   u_step = u_step.arrow
