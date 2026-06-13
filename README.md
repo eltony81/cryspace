@@ -100,8 +100,8 @@ CrySpace relies on the following dependencies:
 - **num.cr** (`~> 1.7.7`): High-performance scientific computing and linear algebra library for Crystal.
 
 ### System Dependencies
-- **LAPACK** (`liblapack-dev`): Linear Algebra Package for high-performance numerical routines.
-- **BLAS/CBLAS** (`libcblas-dev`): Basic Linear Algebra Subprograms interface.
+- **LAPACK** (`liblapack-dev` / `lapack` `>= 3.12.0`): Linear Algebra Package for high-performance numerical routines.
+- **BLAS/CBLAS** (`libcblas-dev` / `cblas` / `openblas` `>= 3.12.0` / `>= 0.3.26`): Basic Linear Algebra Subprograms interface.
 
 ### Language / Compiler
 - **Crystal** (`>= 1.20.2`): The compiler and language runtime.
