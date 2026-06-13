@@ -1,6 +1,6 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.25.6-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.25.7-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
 
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
@@ -149,7 +149,34 @@ sudo pacman -S arrow
 crystal build -Darrow --release src/your_app.cr
 ```
 
+#### How to Use Arrow in Your Code:
+
+Simply convert your time vector (`t`) and input vector (`u`) to Arrow-backed tensors using the `.arrow` converter. If the time vector passed to `.simulate` is an Arrow-backed tensor, `cryspace` will automatically run the simulation on the Arrow SIMD backend.
+
+```crystal
+require "cryspace"
+
+# 1. Define plant matrices
+a = [[0.0, 10.0], [-10.0, -1.0]].to_tensor
+b = [[0.0], [2.0]].to_tensor
+c = [[1.0, 0.0]].to_tensor
+d = [[0.0]].to_tensor
+sys = CrySpace::StateSpace.new(a, b, c, d)
+
+# 2. Setup vectors
+t = Float64Tensor.linear_space(0.0, 10.0, 1001)
+u = Float64Tensor.ones([1, 1001])
+
+# 3. Promote to Arrow backend for SIMD execution (compiled with -Darrow)
+t_arrow = t.arrow
+u_arrow = u.arrow
+
+# 4. Simulate - runs automatically on Arrow C++ compute engine
+times, states, outputs = sys.simulate(t_arrow, u: u_arrow)
+```
+
 #### Performance Benchmark (Arrow vs. CPU)
+
 
 To demonstrate the real-world impact of the Apache Arrow SIMD backend, a benchmark simulation is included in [examples/arrow_vs_cpu_benchmark.cr](examples/arrow_vs_cpu_benchmark.cr). This script simulates a continuous **closed-loop RLC PID control system** with **4 states** ($A \in \mathbb{R}^{4 \times 4}$) using Runge-Kutta 4th-order (RK4) integration for **1,000,000 simulation steps** (from $0$ to $1000$ seconds, $dt = 0.001$).
 
