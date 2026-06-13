@@ -52,13 +52,31 @@ u_step = Float64Tensor.ones([1, 1501])
 _, _, y_open = rlc_plant.simulate(t_vec, u: u_step.dup)
 _, _, y_cl = sys_cl.simulate(t_vec, u: u_step.dup)
 
-# 6. Export results to CSV
-csv_filename = "examples/results_sensor.csv"
-File.open(csv_filename, "w") do |file|
-  file.puts "Time,OpenLoop,ClosedLoopSensorPID"
-  1501.times { |i| file.puts "#{t_vec[i].value},#{y_open[i, 0].value},#{y_cl[i, 0].value}" }
-end
-puts "Exported sensor-lag step response data to #{csv_filename}"
+# 6. Export results to CSV or Feather (if Arrow is enabled)
+{% if flag?(:arrow) %}
+  arrow_t = Arrow::DoubleArray.new(t_vec.to_a)
+  arrow_open = Arrow::DoubleArray.new(y_open[..., 0].to_a)
+  arrow_cl = Arrow::DoubleArray.new(y_cl[..., 0].to_a)
+  schema = Arrow::Schema.new([
+    Arrow::Field.new("Time", Arrow::DataType.double),
+    Arrow::Field.new("OpenLoop", Arrow::DataType.double),
+    Arrow::Field.new("ClosedLoopSensorPID", Arrow::DataType.double)
+  ])
+  table = Arrow::Table.new(schema, [arrow_t, arrow_open, arrow_cl])
+  feather_filename = "examples/results_sensor.feather"
+  writer = Arrow::FeatherWriter.new(feather_filename)
+  writer.write(table)
+  writer.close
+  puts "Exported sensor-lag step response data to #{feather_filename} (Apache Arrow Feather format)"
+  File.delete(feather_filename) if File.exists?(feather_filename) # Cleanup in examples run
+{% else %}
+  csv_filename = "examples/results_sensor.csv"
+  File.open(csv_filename, "w") do |file|
+    file.puts "Time,OpenLoop,ClosedLoopSensorPID"
+    1501.times { |i| file.puts "#{t_vec[i].value},#{y_open[i, 0].value},#{y_cl[i, 0].value}" }
+  end
+  puts "Exported sensor-lag step response data to #{csv_filename}"
+{% end %}
 
 # Print sample results to verify convergence
 puts "\nTime (s) | Open Loop Output | Closed Loop Output (with Sensor Lag)"
