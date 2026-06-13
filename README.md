@@ -1,6 +1,6 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.25.8-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.25.9-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
 
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
@@ -18,9 +18,11 @@
 |----------|------|
 | 📖 Narrative README | [examples/STORY.md](examples/STORY.md) |
 | 🌐 Interactive HTML (rendered) | [suspension_storyboard.html via htmlpreview](https://htmlpreview.github.io/?https://github.com/eltony81/cryspace/blob/main/examples/suspension_storyboard.html) |
-| 💎 Crystal source | [examples/36_mega_usecase_storyboard.cr](examples/36_mega_usecase_storyboard.cr) |
+| 💎 Crystal source (CPU version) | [examples/36_mega_usecase_storyboard.cr](examples/36_mega_usecase_storyboard.cr) |
+| ⚡ Crystal source (Arrow SIMD version) | [examples/40_arrow_storyboard.cr](examples/40_arrow_storyboard.cr) |
 
 The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling → stability → frequency analysis → LQR → observers → discretization → model reduction → PID → nonlinear analysis → system identification → ODE solvers → closed-loop simulation → plotting.
+
 
 ---
 
