@@ -1,6 +1,6 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.25.11-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.25.12-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
 
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
@@ -153,8 +153,33 @@ CrySpace relies on the following dependencies:
 2. **Compile with the `-Darrow` compiler flag**:
    Pass the `-Darrow` flag during compilation:
    ```bash
-   crystal build -Darrow --release src/your_app.cr
-   ```
+    crystal build -Darrow --release src/your_app.cr
+    ```
+
+### ⚡ Dynamic Backend Dispatch & GPU (OpenCL) Integration
+
+`cryspace` leverages the underlying `num.cr` dynamic backend dispatch. Standard CPU tensors (`Tensor(Float64, CPU(Float64))`) used in arithmetic equations will automatically route their execution paths to the most performant backend based on data size thresholds and active flags:
+
+1. **CPU Fallback (Small datasets)**: For sizes $< 1,000$ elements, calculations are run directly on the standard CPU loop to avoid device latency.
+2. **Arrow SIMD Acceleration (Medium datasets)**: For sizes between $1,000$ and $1,000,000$ elements, operations are offloaded to **Apache Arrow's** vectorized C++ SIMD compute engine (when compiled with `-Darrow`).
+3. **OpenCL GPU Acceleration (Large datasets)**: For sizes $\ge 1,000,000$ elements, operations are copied to the **OpenCL GPU** device, computed in parallel across GPU cores, and copied back to CPU storage (when compiled with `-Dopencl`).
+
+#### Selection Matrix & Compilation Options:
+
+Depending on your hardware and workload sizes, choose your compile flags:
+
+- **CPU SIMD only (Medium/Real-time loops)**:
+  ```bash
+  crystal build -Darrow --release src/your_app.cr
+  ```
+- **GPU Acceleration only (Large systems/Finite elements)**:
+  ```bash
+  crystal build -Dopencl --release src/your_app.cr
+  ```
+- **Hybrid Auto-Dispatch Mode (CPU + SIMD + GPU)**:
+  ```bash
+  crystal build -Darrow -Dopencl --release src/your_app.cr
+  ```
 
 #### How to Use Arrow in Your Code:
 
