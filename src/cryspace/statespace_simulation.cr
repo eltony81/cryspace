@@ -51,8 +51,20 @@ module CrySpace
     end
 
     # Vectorized simulation: optimized for StateSpace systems
-    def simulate(t : Float64Tensor, x0 : Float64Tensor? = nil, u : Float64Tensor? = nil, method = :rk4)
-      n_steps = t.size
+    def simulate(t : AnyFloat64Tensor, x0 : AnyFloat64Tensor? = nil, u : AnyFloat64Tensor? = nil, method = :rk4)
+      {% if flag?(:arrow) %}
+        if t.is_a?(Tensor(Float64, ARROW(Float64)))
+          x0_arr = x0 ? (x0.is_a?(Tensor(Float64, ARROW(Float64))) ? x0 : x0.arrow) : nil
+          u_arr = u ? (u.is_a?(Tensor(Float64, ARROW(Float64))) ? u : u.arrow) : nil
+          return simulate_arrow(t, x0_arr, u_arr, method)
+        end
+      {% end %}
+
+      t_cpu = t.as(Tensor(Float64, CPU(Float64)))
+      x0_cpu = x0 ? x0.as(Tensor(Float64, CPU(Float64))) : nil
+      u_cpu = u ? u.as(Tensor(Float64, CPU(Float64))) : nil
+
+      n_steps = t_cpu.size
       n_states_count = self.n_states
       n_outputs_count = self.n_outputs
       n_inputs_count = self.n_inputs
@@ -60,9 +72,14 @@ module CrySpace
       x_matrix = Float64Tensor.new([n_steps, n_states_count])
       y_matrix = Float64Tensor.new([n_steps, n_outputs_count])
       
-      x_current = x0.nil? ? Float64Tensor.zeros([n_states_count, 1]) : x0.dup
-      u_val = u.nil? ? Float64Tensor.zeros([n_inputs_count, 1]) : (u.is_c_contiguous ? u : u.dup(Num::RowMajor))
+      x_current = x0_cpu.nil? ? Float64Tensor.zeros([n_states_count, 1]) : x0_cpu.dup
+      u_val = u_cpu.nil? ? Float64Tensor.zeros([n_inputs_count, 1]) : (u_cpu.is_c_contiguous ? u_cpu : u_cpu.dup(Num::RowMajor))
       u_current = Float64Tensor.zeros([n_inputs_count, 1])
+
+      a_cpu = @a.as(Tensor(Float64, CPU(Float64)))
+      b_cpu = @b.as(Tensor(Float64, CPU(Float64)))
+      c_cpu = @c.as(Tensor(Float64, CPU(Float64)))
+      d_cpu = @d.as(Tensor(Float64, CPU(Float64)))
       
       n_steps.times do |i|
         if u_val.shape[1] > 1
@@ -74,7 +91,66 @@ module CrySpace
         end
 
         # Step 1: Calculate output at current state
-        y = @c.matmul(x_current) + @d.matmul(u_current)
+        y = c_cpu.matmul(x_current) + d_cpu.matmul(u_current)
+        
+        # Step 2: Copy current state and output to result matrices using pointers
+        n_states_count.times do |j|
+          x_matrix.to_unsafe[i * n_states_count + j] = x_current.to_unsafe[j]
+        end
+        
+        n_outputs_count.times do |j|
+          y_matrix.to_unsafe[i * n_outputs_count + j] = y.to_unsafe[j]
+        end
+        
+        # Step 3: Advance to next state (if not the last step)
+        if i < n_steps - 1
+          h = t_cpu.to_unsafe[i + 1] - t_cpu.to_unsafe[i]
+          if method == :rk4
+            k1 = a_cpu.matmul(x_current) + b_cpu.matmul(u_current)
+            k2 = a_cpu.matmul(x_current + k1 * (h / 2.0)) + b_cpu.matmul(u_current)
+            k3 = a_cpu.matmul(x_current + k2 * (h / 2.0)) + b_cpu.matmul(u_current)
+            k4 = a_cpu.matmul(x_current + k3 * h) + b_cpu.matmul(u_current)
+            x_current = x_current + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
+          else
+            k = a_cpu.matmul(x_current) + b_cpu.matmul(u_current)
+            x_current = x_current + k * h
+          end
+        end
+      end
+      
+      {t_cpu, x_matrix, y_matrix}
+    end
+
+    {% if flag?(:arrow) %}
+    private def simulate_arrow(t : Tensor(Float64, ARROW(Float64)), x0 : Tensor(Float64, ARROW(Float64))? = nil, u : Tensor(Float64, ARROW(Float64))? = nil, method = :rk4)
+      n_steps = t.size
+      n_states_count = self.n_states
+      n_outputs_count = self.n_outputs
+      n_inputs_count = self.n_inputs
+      
+      x_matrix = Tensor(Float64, ARROW(Float64)).zeros([n_steps, n_states_count])
+      y_matrix = Tensor(Float64, ARROW(Float64)).zeros([n_steps, n_outputs_count])
+      
+      x_current = x0.nil? ? Tensor(Float64, ARROW(Float64)).zeros([n_states_count, 1]) : x0.dup
+      u_val = u.nil? ? Tensor(Float64, ARROW(Float64)).zeros([n_inputs_count, 1]) : (u.is_c_contiguous ? u : u.dup(Num::RowMajor))
+      u_current = Tensor(Float64, ARROW(Float64)).zeros([n_inputs_count, 1])
+
+      a_arr = @a.arrow
+      b_arr = @b.arrow
+      c_arr = @c.arrow
+      d_arr = @d.arrow
+      
+      n_steps.times do |i|
+        if u_val.shape[1] > 1
+          n_inputs_count.times do |j|
+            u_current.to_unsafe[j] = u_val.to_unsafe[j * n_steps + i]
+          end
+        else
+          u_current = u_val
+        end
+
+        # Step 1: Calculate output at current state
+        y = c_arr.matmul(x_current) + d_arr.matmul(u_current)
         
         # Step 2: Copy current state and output to result matrices using pointers
         n_states_count.times do |j|
@@ -89,13 +165,13 @@ module CrySpace
         if i < n_steps - 1
           h = t.to_unsafe[i + 1] - t.to_unsafe[i]
           if method == :rk4
-            k1 = @a.matmul(x_current) + @b.matmul(u_current)
-            k2 = @a.matmul(x_current + k1 * (h / 2.0)) + @b.matmul(u_current)
-            k3 = @a.matmul(x_current + k2 * (h / 2.0)) + @b.matmul(u_current)
-            k4 = @a.matmul(x_current + k3 * h) + @b.matmul(u_current)
+            k1 = a_arr.matmul(x_current) + b_arr.matmul(u_current)
+            k2 = a_arr.matmul(x_current + k1 * (h / 2.0)) + b_arr.matmul(u_current)
+            k3 = a_arr.matmul(x_current + k2 * (h / 2.0)) + b_arr.matmul(u_current)
+            k4 = a_arr.matmul(x_current + k3 * h) + b_arr.matmul(u_current)
             x_current = x_current + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
           else
-            k = @a.matmul(x_current) + @b.matmul(u_current)
+            k = a_arr.matmul(x_current) + b_arr.matmul(u_current)
             x_current = x_current + k * h
           end
         end
@@ -103,6 +179,7 @@ module CrySpace
       
       {t, x_matrix, y_matrix}
     end
+    {% end %}
 
     # Simulates impulse response of discrete or continuous (sampled) system.
     def impulse_response(n_steps = 100)

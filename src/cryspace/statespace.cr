@@ -9,6 +9,12 @@ require "./frd"
 require "./descriptor"
 
 module CrySpace
+  {% if flag?(:arrow) %}
+    alias AnyFloat64Tensor = Tensor(Float64, CPU(Float64)) | Tensor(Float64, ARROW(Float64))
+  {% else %}
+    alias AnyFloat64Tensor = Tensor(Float64, CPU(Float64))
+  {% end %}
+
   class StateSpace
     property a : Float64Tensor
     property b : Float64Tensor

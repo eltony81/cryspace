@@ -49,6 +49,11 @@ t_vec = Float64Tensor.linear_space(0.0, 15.0, 1501)
 u_step = Float64Tensor.ones([1, 1501])
 
 # Simulate open loop and closed loop
+{% if flag?(:arrow) %}
+  t_vec = t_vec.arrow
+  u_step = u_step.arrow
+{% end %}
+
 _, _, y_open = rlc_plant.simulate(t_vec, u: u_step.dup)
 _, _, y_cl = sys_cl.simulate(t_vec, u: u_step.dup)
 
