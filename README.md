@@ -1,6 +1,6 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.25.7-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.25.8-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
 
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
@@ -128,26 +128,31 @@ CrySpace relies on the following dependencies:
 
 ### Vectorized SIMD Mode (Apache Arrow)
 
-To enable high-performance SIMD execution for tensor and matrix calculations, you can compile your application with the `-Darrow` compiler flag. 
+`cryspace` supports high-performance SIMD execution for tensor, matrix, and simulation calculations via Apache Arrow. 
 
-When `-Darrow` is enabled:
-1. Operations on Arrow-backed Tensors (like in-place `add!`, `subtract!`, `multiply!`, `divide!`, and unary `-` negation) automatically offload to Apache Arrow's SIMD-optimized C++ compute engine (using AVX2, AVX-512, or ARM Neon depending on your CPU).
-2. Dynamic state space simulations (`simulate`) offload dynamic system iterations to C++ memory-mapped space, reducing garbage collector overhead to near-zero.
+#### 🌟 Arrow Backend Features:
+- **Offloaded Simulations**: Dynamic state space simulations (`simulate`) offload continuous-time trajectory mathematical iterations to C++ memory-mapped space, reducing garbage collector overhead to near-zero.
+- **Vectorized In-Place Math**: In-place arithmetic operations (`add!`, `subtract!`, `multiply!`, `divide!`) on Arrow-backed Tensors offload to Arrow's C++ compute engine using SIMD instructions (AVX2, AVX-512, or ARM Neon).
+- **Fast Unary Negation**: Contiguous tensor negation (`-tensor`) runs directly via C++ compute kernels with zero memory-allocation overhead.
+- **Ultra-Fast Serialization**: Save and load simulation datasets directly from disk in memory-mapped columnar binary **Feather** files via `Arrow::FeatherWriter`.
 
-#### System Requirements:
-To link and compile with `-Darrow`, you must have the Apache Arrow development packages installed:
-```bash
-# On Ubuntu/Debian
-sudo apt-get install libarrow-glib-dev
+#### ⚙️ How to Activate It:
 
-# On Arch/Manjaro
-sudo pacman -S arrow
-```
+1. **Install System Dependencies**:
+   You must have the Apache Arrow development packages installed on your system:
+   ```bash
+   # On Ubuntu/Debian
+   sudo apt-get install libarrow-glib-dev
 
-#### Compilation Example:
-```bash
-crystal build -Darrow --release src/your_app.cr
-```
+   # On Arch/Manjaro
+   sudo pacman -S arrow
+   ```
+
+2. **Compile with the `-Darrow` compiler flag**:
+   Pass the `-Darrow` flag during compilation:
+   ```bash
+   crystal build -Darrow --release src/your_app.cr
+   ```
 
 #### How to Use Arrow in Your Code:
 
