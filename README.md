@@ -100,7 +100,7 @@ The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling 
 CrySpace relies on the following dependencies:
 
 ### Shard Dependencies
-- **num.cr** (`~> 1.23.0`): High-performance scientific computing and linear algebra library for Crystal.
+- **num.cr** (`~> 1.24.0`): High-performance scientific computing and linear algebra library for Crystal.
 
 ### System Dependencies
 - **LAPACK** (`liblapack-dev` / `lapack` `>= 3.12.0`): Linear Algebra Package for high-performance numerical routines.
