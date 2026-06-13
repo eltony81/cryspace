@@ -378,32 +378,6 @@
         <div class="card">
           <h3>State Variables</h3>
           <p style="font-size:0.88rem;color:var(--muted)">x₁ = position (m), x₂ = velocity (m/s)</p>
-          <!-- State equation: ẋ = Ax + Bu -->
-          <div class="eq">
-            <div class="bk">
-              <div class="bk-inner" style="grid-template-columns:1fr;">
-                <span><span class="dot">x&#775;</span><sub>1</sub></span>
-                <span><span class="dot">x&#775;</span><sub>2</sub></span>
-              </div>
-            </div>
-            <span class="op">=</span>
-            <div class="bk">
-              <div class="bk-inner" style="grid-template-columns:1fr 1fr;">
-                <span>0</span><span>1</span>
-                <span>−k/M</span><span>−b/M</span>
-              </div>
-            </div>
-            <div class="bk">
-              <div class="bk-inner" style="grid-template-columns:1fr;">
-                <span class="sym">x</span><sub>1</sub>
-                <span class="sym">x</span><sub>2</sub>
-              </div>
-            </div>
-            <span class="op">+</span>
-            <div class="bk">
-              <div class="bk-inner" style="grid-template-columns:1fr;">
-                <span>0</span>
-                <span>1/M</span>
               </div>
             </div>
             <span class="sym">u</span>
@@ -606,8 +580,26 @@ plant.<span class="fn">is_observable?</span>     <span class="cmt"># → true</s
       <span class="bold">x</span><sup>T</sup>
       <span class="sym" style="color:#fbbf24;"> Q </span>
       <span class="bold">x</span>
-      <span class="op">+</span>
-      <span class="sym">u</span><sup>T</sup>
+      <span class="op">+<pre class="code-block">
+\[
+\begin{bmatrix}
+\dot{x}_1\\\dot{x}_2
+\end{bmatrix}
+=
+\begin{bmatrix}
+0 & 1\\
+- k/M & -b/M
+\end{bmatrix}
+\begin{bmatrix}
+ x_1\\
+ x_2
+\end{bmatrix}
++ \begin{bmatrix}
+0\\
+1/M
+\end{bmatrix} u
+\]
+</pre>T</sup>
       <span class="sym" style="color:#fbbf24;"> R </span>
       <span class="sym">u</span>
       <span style="font-size:1.05rem;">&#41;</span>

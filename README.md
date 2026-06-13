@@ -1,6 +1,6 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.22.0-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.23.0-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
 
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
@@ -91,6 +91,20 @@ The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling 
 - **State Estimation**:
   - Discrete-Time Kalman Filter (`KalmanFilter`) implementation.
 - **SISO & MIMO**: Support for Single-Input Single-Output and Multi-Input Multi-Output systems.
+
+## Dependencies
+
+CrySpace relies on the following dependencies:
+
+### Shard Dependencies
+- **num.cr** (`~> 1.7.7`): High-performance scientific computing and linear algebra library for Crystal.
+
+### System Dependencies
+- **LAPACK** (`liblapack-dev`): Linear Algebra Package for high-performance numerical routines.
+- **BLAS/CBLAS** (`libcblas-dev`): Basic Linear Algebra Subprograms interface.
+
+### Language / Compiler
+- **Crystal** (`>= 1.20.2`): The compiler and language runtime.
 
 ## Installation
 
