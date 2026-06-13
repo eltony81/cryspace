@@ -126,7 +126,28 @@ CrySpace relies on the following dependencies:
    sudo apt-get install liblapack-dev libcblas-dev
    ```
 
-3. Run `shards install`
+### Vectorized SIMD Mode (Apache Arrow)
+
+To enable high-performance SIMD execution for tensor and matrix calculations, you can compile your application with the `-Darrow` compiler flag. 
+
+When `-Darrow` is enabled:
+1. Operations on Arrow-backed Tensors (like in-place `add!`, `subtract!`, `multiply!`, `divide!`, and unary `-` negation) automatically offload to Apache Arrow's SIMD-optimized C++ compute engine (using AVX2, AVX-512, or ARM Neon depending on your CPU).
+2. Dynamic state space simulations (`simulate`) offload dynamic system iterations to C++ memory-mapped space, reducing garbage collector overhead to near-zero.
+
+#### System Requirements:
+To link and compile with `-Darrow`, you must have the Apache Arrow development packages installed:
+```bash
+# On Ubuntu/Debian
+sudo apt-get install libarrow-glib-dev
+
+# On Arch/Manjaro
+sudo pacman -S arrow
+```
+
+#### Compilation Example:
+```bash
+crystal build -Darrow --release src/your_app.cr
+```
 
 ## Usage
 
