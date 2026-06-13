@@ -1,8 +1,16 @@
 # examples/40_arrow_storyboard.cr
 # Specular version of 36_mega_usecase_storyboard.cr showcasing how to integrate Apache Arrow SIMD.
 #
-# Compile and run with:
-#   crystal run -Darrow examples/40_arrow_storyboard.cr
+# Compilation Instructions:
+#   To compile and run this script with Apache Arrow SIMD optimizations enabled,
+#   make sure you have installed 'libarrow-glib-dev' (Ubuntu/Debian) or 'arrow' (Arch/Manjaro).
+#
+#   Compile / Run Command:
+#     crystal run -Darrow examples/40_arrow_storyboard.cr
+#
+#   Build Production Binary Command:
+#     crystal build -Darrow --release examples/40_arrow_storyboard.cr
+#
 
 require "../src/cryspace"
 
