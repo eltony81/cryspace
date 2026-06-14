@@ -1329,7 +1329,7 @@ sys.bode_plot("bode_response.html")
 | Backend | Execution Time | GC Allocated Memory | Optimization Level |
 | :--- | :--- | :--- | :--- |
 | **CPU (Optimized)** | **4.9 s** | 6.2 GB | **Default / Zero-Allocation** |
-| **Arrow SIMD** | **88.6 s** | 12.8 GB | **High Throughput / FFI Overhead** |
+| **Arrow SIMD** | **89.4 s** | 12.8 GB | **High Throughput / FFI Overhead** |
 
 ### 🚀 Performance Insights:
 - **CPU is King for Control Systems**: For standard systems (1-50 states), the CPU backend is significantly faster due to the overhead of Foreign Function Interface (FFI) calls to the Arrow C++ kernels.
