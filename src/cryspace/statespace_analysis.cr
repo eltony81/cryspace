@@ -27,15 +27,11 @@ module CrySpace
       n = n_states
       g = @b.matmul(r.inv).matmul(@b.transpose)
 
-      h = Float64Tensor.zeros([2 * n, 2 * n])
-      n.times do |i|
-        n.times do |j|
-          h.to_unsafe[i * (2 * n) + j] = @a.to_unsafe[i * n + j]
-          h.to_unsafe[i * (2 * n) + n + j] = -g.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + j] = -q.to_unsafe[i * n + j]
-          h.to_unsafe[(n + i) * (2 * n) + n + j] = -@a.to_unsafe[j * n + i]
-        end
-      end
+      # Construct Hamiltonian matrix H = [A -G; -Q -A^T]
+      # Using Num.vstack/hstack for performance
+      h_top = Num.hstack(@a, -g)
+      h_bottom = Num.hstack(-q, -@a.transpose)
+      h = Num.vstack(h_top, h_bottom)
 
       # Use Schur decomposition for better stability if available, 
       # otherwise fallback to eigenvalue decomposition (Potter's method)
@@ -107,35 +103,19 @@ module CrySpace
       # G = B * R^-1 * B^T
       g = @b.matmul(r.inv).matmul(@b.transpose)
       
-      # We use the symplectic pencil method if A is not guaranteed invertible,
-      # but for now we implement the Symplectic Matrix method (Laub's method)
-      # which assumes A is invertible for simplicity, or we use Potter's method on the pencil.
+      # We use the symplectic pencil (L, M) for the generalized eigenvalue problem
+      # L = [A 0; -Q I], M = [I G; 0 A^T]
+      # Using Num.vstack/hstack for performance
+      eye = Float64Tensor.identity(n)
+      zeros = Float64Tensor.zeros([n, n])
       
-      # Let's use Potter's method on the symplectic matrix:
-      # S = [A + G*A^-T*Q   -G*A^-T]
-      #     [-A^-T*Q         A^-T  ]
+      l_top = Num.hstack(@a, zeros)
+      l_bottom = Num.hstack(-q, eye)
+      l = Num.vstack(l_top, l_bottom)
       
-      # Alternatively, if A is singular, we use the pencil (L, M):
-      # L = [A  0], M = [I  G]
-      #     [-Q I]      [0  A^T]
-      
-      # Generalized eigenvalue problem: L*z = lambda*M*z
-      # This is more robust.
-      
-      l = Float64Tensor.zeros([2 * n, 2 * n])
-      m_mat = Float64Tensor.zeros([2 * n, 2 * n])
-      
-      n.times do |i|
-        n.times do |j|
-          l[i, j] = @a[i, j].value
-          l[n + i, j] = -q[i, j].value
-          l[n + i, n + j] = (i == j ? 1.0 : 0.0)
-          
-          m_mat[i, j] = (i == j ? 1.0 : 0.0)
-          m_mat[i, n + j] = g[i, j].value
-          m_mat[n + i, n + j] = @a[j, i].value
-        end
-      end
+      m_top = Num.hstack(eye, g)
+      m_bottom = Num.hstack(zeros, @a.transpose)
+      m_mat = Num.vstack(m_top, m_bottom)
       
       # For now, we use eig_c on M^-1 * L if M is invertible
       # In a future version of num.cr we could use gges

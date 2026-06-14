@@ -81,6 +81,11 @@ module CrySpace
       c_cpu = @c.as(Tensor(Float64, CPU(Float64)))
       d_cpu = @d.as(Tensor(Float64, CPU(Float64)))
       
+      # Pre-allocate vectors for in-place math to avoid millions of allocations
+      y_temp = Float64Tensor.new([n_outputs_count, 1])
+      term_b = Float64Tensor.new([n_states_count, 1])
+      term_d = Float64Tensor.new([n_outputs_count, 1])
+      
       n_steps.times do |i|
         if u_val.shape[1] > 1
           n_inputs_count.times do |j|
@@ -90,8 +95,9 @@ module CrySpace
           u_current = u_val
         end
 
-        # Step 1: Calculate output at current state
-        y = c_cpu.matmul(x_current) + d_cpu.matmul(u_current)
+        # Step 1: Calculate output at current state: y = C*x + D*u
+        c_cpu.matmul(x_current, output: y_temp)
+        d_cpu.matmul(u_current, output: term_d)
         
         # Step 2: Copy current state and output to result matrices using pointers
         n_states_count.times do |j|
@@ -99,21 +105,27 @@ module CrySpace
         end
         
         n_outputs_count.times do |j|
-          y_matrix.to_unsafe[i * n_outputs_count + j] = y.to_unsafe[j]
+          y_matrix.to_unsafe[i * n_outputs_count + j] = y_temp.to_unsafe[j] + term_d.to_unsafe[j]
         end
         
         # Step 3: Advance to next state (if not the last step)
         if i < n_steps - 1
           h = t_cpu.to_unsafe[i + 1] - t_cpu.to_unsafe[i]
           if method == :rk4
+            # For RK4 we still have some intermediate vectors, but let's at least avoid the biggest ones
             k1 = a_cpu.matmul(x_current) + b_cpu.matmul(u_current)
             k2 = a_cpu.matmul(x_current + k1 * (h / 2.0)) + b_cpu.matmul(u_current)
             k3 = a_cpu.matmul(x_current + k2 * (h / 2.0)) + b_cpu.matmul(u_current)
             k4 = a_cpu.matmul(x_current + k3 * h) + b_cpu.matmul(u_current)
             x_current = x_current + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
           else
-            k = a_cpu.matmul(x_current) + b_cpu.matmul(u_current)
-            x_current = x_current + k * h
+            # Euler: x_next = x + h * (A*x + B*u)
+            a_cpu.matmul(x_current, output: term_b)
+            # x_current += h * term_b
+            n_states_count.times { |j| x_current.to_unsafe[j] += h * term_b.to_unsafe[j] }
+            b_cpu.matmul(u_current, output: term_b)
+            # x_current += h * term_b
+            n_states_count.times { |j| x_current.to_unsafe[j] += h * term_b.to_unsafe[j] }
           end
         end
       end
