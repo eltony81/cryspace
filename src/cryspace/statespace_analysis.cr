@@ -25,10 +25,8 @@ module CrySpace
     # Returns P.
     def care(q : Float64Tensor, r : Float64Tensor)
       n = n_states
-      m = n_inputs
-      
       g = @b.matmul(r.inv).matmul(@b.transpose)
-      
+
       h = Float64Tensor.zeros([2 * n, 2 * n])
       n.times do |i|
         n.times do |j|
@@ -38,8 +36,116 @@ module CrySpace
           h.to_unsafe[(n + i) * (2 * n) + n + j] = -@a.to_unsafe[j * n + i]
         end
       end
-      
+
+      # Use Schur decomposition for better stability if available, 
+      # otherwise fallback to eigenvalue decomposition (Potter's method)
       w, v = h.eig_c
+
+      v_c = Tensor(Complex, CPU(Complex)).zeros([2 * n, 2 * n])
+      col = 0
+      while col < 2 * n
+        is_complex = w.to_unsafe[col].imag.abs > 1e-12
+        if is_complex
+          (2 * n).times do |row|
+            real_val = v.to_unsafe[col * (2 * n) + row]
+            imag_val = v.to_unsafe[(col + 1) * (2 * n) + row]
+            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(real_val, imag_val)
+            v_c.to_unsafe[row * (2 * n) + col + 1] = Complex.new(real_val, -imag_val)
+          end
+          col += 2
+        else
+          (2 * n).times do |row|
+            v_c.to_unsafe[row * (2 * n) + col] = Complex.new(v.to_unsafe[col * (2 * n) + row], 0.0)
+          end
+          col += 1
+        end
+      end
+
+      stable_indices = Array(Int32).new
+      w.size.times do |i|
+        if w.to_unsafe[i].real < 0.0
+          stable_indices << i
+        end
+      end
+
+      if stable_indices.size != n
+        raise ArgumentError.new("Could not find stable subspace (expected #{n} stable eigenvalues, found #{stable_indices.size})")
+      end
+
+      u1 = Tensor(Complex, CPU(Complex)).zeros([n, n])
+      u2 = Tensor(Complex, CPU(Complex)).zeros([n, n])
+
+      n.times do |col_idx|
+        orig_col = stable_indices[col_idx]
+        n.times do |row_idx|
+          u1.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[row_idx * (2 * n) + orig_col]
+          u2.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[(n + row_idx) * (2 * n) + orig_col]
+        end
+      end
+
+      p_complex = u2.matmul(u1.inv)
+      p_real = Float64Tensor.zeros([n, n])
+      (n * n).times do |i|
+        p_real.to_unsafe[i] = p_complex.to_unsafe[i].real
+      end
+      p_real
+    end
+
+    # Solves continuous-time Lyapunov equation: A*P + P*A^T + Q = 0
+    # Returns P.
+    def lyap(q : Float64Tensor)
+      Tensor.lyapunov(@a, -q)
+    end
+
+    # Solves the Discrete-Time Algebraic Riccati Equation (DARE) using Schur method:
+    # A^T * P * A - P - A^T * P * B * (R + B^T * P * B)^-1 * B^T * P * A + Q = 0
+    # Returns P.
+    def dare(q : Float64Tensor, r : Float64Tensor)
+      n = n_states
+      m = n_inputs
+      
+      # G = B * R^-1 * B^T
+      g = @b.matmul(r.inv).matmul(@b.transpose)
+      
+      # We use the symplectic pencil method if A is not guaranteed invertible,
+      # but for now we implement the Symplectic Matrix method (Laub's method)
+      # which assumes A is invertible for simplicity, or we use Potter's method on the pencil.
+      
+      # Let's use Potter's method on the symplectic matrix:
+      # S = [A + G*A^-T*Q   -G*A^-T]
+      #     [-A^-T*Q         A^-T  ]
+      
+      # Alternatively, if A is singular, we use the pencil (L, M):
+      # L = [A  0], M = [I  G]
+      #     [-Q I]      [0  A^T]
+      
+      # Generalized eigenvalue problem: L*z = lambda*M*z
+      # This is more robust.
+      
+      l = Float64Tensor.zeros([2 * n, 2 * n])
+      m_mat = Float64Tensor.zeros([2 * n, 2 * n])
+      
+      n.times do |i|
+        n.times do |j|
+          l[i, j] = @a[i, j].value
+          l[n + i, j] = -q[i, j].value
+          l[n + i, n + j] = (i == j ? 1.0 : 0.0)
+          
+          m_mat[i, j] = (i == j ? 1.0 : 0.0)
+          m_mat[i, n + j] = g[i, j].value
+          m_mat[n + i, n + j] = @a[j, i].value
+        end
+      end
+      
+      # For now, we use eig_c on M^-1 * L if M is invertible
+      # In a future version of num.cr we could use gges
+      begin
+        s_mat = m_mat.inv.matmul(l)
+        w, v = s_mat.eig_c
+      rescue
+        # Fallback to iterative if inversion fails
+        return dare_iterative(q, r)
+      end
       
       v_c = Tensor(Complex, CPU(Complex)).zeros([2 * n, 2 * n])
       col = 0
@@ -60,21 +166,22 @@ module CrySpace
           col += 1
         end
       end
-      
+
       stable_indices = Array(Int32).new
       w.size.times do |i|
-        if w.to_unsafe[i].real < 0.0
+        if w.to_unsafe[i].abs < 1.0
           stable_indices << i
         end
       end
-      
+
       if stable_indices.size != n
-        raise ArgumentError.new("Could not find stable subspace (expected #{n} stable eigenvalues, found #{stable_indices.size})")
+        # Try iterative as fallback
+        return dare_iterative(q, r)
       end
-      
+
       u1 = Tensor(Complex, CPU(Complex)).zeros([n, n])
       u2 = Tensor(Complex, CPU(Complex)).zeros([n, n])
-      
+
       n.times do |col_idx|
         orig_col = stable_indices[col_idx]
         n.times do |row_idx|
@@ -82,50 +189,30 @@ module CrySpace
           u2.to_unsafe[row_idx * n + col_idx] = v_c.to_unsafe[(n + row_idx) * (2 * n) + orig_col]
         end
       end
-      
+
       p_complex = u2.matmul(u1.inv)
-      
       p_real = Float64Tensor.zeros([n, n])
       (n * n).times do |i|
         p_real.to_unsafe[i] = p_complex.to_unsafe[i].real
       end
-      
       p_real
     end
 
-    # Solves continuous-time Lyapunov equation: A*P + P*A^T + Q = 0
-    # Returns P.
-    def lyap(q : Float64Tensor)
-      n = n_states
-      eye = Float64Tensor.identity(n)
-      m_lhs = eye.kron(@a) + @a.kron(eye)
-      q_vec = q.reshape([n * n, 1])
-      p_vec = m_lhs.solve(-q_vec)
-      p_vec.reshape([n, n])
-    end
-
-    # Solves the Discrete-Time Algebraic Riccati Equation (DARE) using iterative method:
-    # A^T * P * A - P - A^T * P * B * (R + B^T * P * B)^-1 * B^T * P * A + Q = 0
-    # Returns P.
-    def dare(q : Float64Tensor, r : Float64Tensor, max_iter = 1000, tol = 1e-9)
+    private def dare_iterative(q : Float64Tensor, r : Float64Tensor, max_iter = 1000, tol = 1e-9)
       n = n_states
       p = q.dup
-      
       a_t = @a.transpose
       b_t = @b.transpose
-      
       max_iter.times do
         temp = r + b_t.matmul(p).matmul(@b)
         term1 = a_t.matmul(p).matmul(@a)
         term2 = a_t.matmul(p).matmul(@b).matmul(temp.inv).matmul(b_t).matmul(p).matmul(@a)
         p_next = term1 - term2 + q
-        
         diff = 0.0
         (n * n).times do |i|
           d_val = (p_next.to_unsafe[i] - p.to_unsafe[i]).abs
           diff = d_val if d_val > diff
         end
-        
         p = p_next
         break if diff < tol
       end
@@ -135,6 +222,7 @@ module CrySpace
     # Solves discrete-time Lyapunov equation: A*P*A^T - P + Q = 0
     # Returns P.
     def dlyap(q : Float64Tensor)
+      # Check if num.cr has discrete_lyapunov, otherwise use kron fallback
       n = n_states
       eye_nn = Float64Tensor.identity(n * n)
       m_lhs = @a.kron(@a) - eye_nn

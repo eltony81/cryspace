@@ -9,16 +9,32 @@ module CrySpace
       end
       
       if method == :zoh
-        ad = (@a * dt).expm
-        
         n = n_states
-        bd_term = Float64Tensor.identity(n)
-        sum_term = Float64Tensor.identity(n)
-        (1..15).each do |i|
-          bd_term = bd_term.matmul(@a * dt) / (i + 1).to_f
-          sum_term = sum_term + bd_term
+        m = n_inputs
+        
+        # Augmented matrix [A B; 0 0] * dt
+        aug = Float64Tensor.zeros([n + m, n + m])
+        n.times do |i|
+          n.times do |j|
+            aug[i, j] = @a[i, j].value * dt
+          end
+          m.times do |j|
+            aug[i, n + j] = @b[i, j].value * dt
+          end
         end
-        bd = sum_term.matmul(@b) * dt
+        
+        aug_exp = aug.expm
+        
+        ad = Float64Tensor.zeros([n, n])
+        bd = Float64Tensor.zeros([n, m])
+        n.times do |i|
+          n.times do |j|
+            ad[i, j] = aug_exp[i, j].value
+          end
+          m.times do |j|
+            bd[i, j] = aug_exp[i, n + j].value
+          end
+        end
         
         StateSpace.new(ad, bd, @c, @d, dt)
       elsif method == :gbt || method == :bilinear || method == :tustin

@@ -1,5 +1,5 @@
 require "./cryspace/*"
 
 module CrySpace
-  VERSION = "1.24.0"
+  VERSION = "1.26.0"
 end

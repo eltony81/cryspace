@@ -343,15 +343,7 @@ module CrySpace
 
     # Solves Sylvester equation: A*X + X*B = C. Returns X.
     def self.sylvester(a : Float64Tensor, b : Float64Tensor, c : Float64Tensor) : Float64Tensor
-      n = a.shape[0]
-      m = b.shape[0]
-      eye_n = Float64Tensor.identity(n)
-      eye_m = Float64Tensor.identity(m)
-      
-      lhs = eye_m.kron(a) + b.transpose.kron(eye_n)
-      c_vec = c.reshape([n * m, 1])
-      x_vec = lhs.solve(c_vec)
-      x_vec.reshape([n, m])
+      Tensor.sylvester(a, b, c)
     end
   end
 end
