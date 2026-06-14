@@ -1,8 +1,8 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.26.1-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.26.2-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
-**CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/eltony81/num.cr) v1.30.0 for high-performance linear algebra.
+**CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/eltony81/num.cr) v1.30.1 for high-performance linear algebra.
 
 ---
 
@@ -130,7 +130,7 @@ The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling 
 CrySpace relies on the following dependencies:
 
 ### Shard Dependencies
-- **num.cr** (`~> 1.26.0`): High-performance scientific computing and linear algebra library for Crystal.
+- **num.cr** (`~> 1.30.1`): High-performance scientific computing and linear algebra library for Crystal.
 
 ### System Dependencies
 - **LAPACK** (`liblapack-dev` / `lapack` `>= 3.12.0`): Linear Algebra Package for high-performance numerical routines.
