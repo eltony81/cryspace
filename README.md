@@ -2,8 +2,31 @@
 
 ![Version](https://img.shields.io/badge/version-1.26.0-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
-
 **CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/eltony81/num.cr) v1.30.0 for high-performance linear algebra.
+
+---
+
+## 📋 Table of Contents
+
+- [🚗 Featured: Active Suspension Storyboard](#-featured-active-suspension-control--end-to-end-storyboard)
+- [✨ Features](#features)
+- [📦 Dependencies](#dependencies)
+- [⚙️ Installation](#installation)
+  - [⚡ Vectorized SIMD Mode (Apache Arrow)](#vectorized-simd-mode-apache-arrow)
+- [🚀 Usage](#usage)
+  - [1. Basic Example: First-Order System](#1-basic-example-first-order-system-non-vectorized)
+  - [2. Mechanical Example: Mass-Spring-Damper](#2-mechanical-example-mass-spring-damper-system)
+  - [3. Comprehensive Example: RLC Circuit with PID](#3-comprehensive-example-rlc-circuit-with-pid-control)
+  - [4. Feedback Connection](#4-feedback-connection-simple-gain)
+  - [5. Step Response and State Analysis](#5-step-response-and-state-analysis)
+  - [6. General ODE Solving (RK4)](#6-general-ode-solving-rk4)
+  - [7. Transfer Function Arithmetic](#7-transfer-function-arithmetic)
+  - [8. Bidirectional Conversions](#8-bidirectional-conversions)
+  - [9. Advanced Control Design & Analysis](#9-advanced-control-design--analysis)
+- [📊 Performance & Benchmarking](#performance--benchmarking)
+- [🧪 Testing](#testing)
+- [🤝 Contributing](#contributing)
+- [⚠️ Known Limitations](#known-limitations)
 
 ---
 
