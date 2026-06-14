@@ -1,49 +1,70 @@
 # examples/arrow_vs_cpu_benchmark.cr
-# This benchmark compares the performance of a StateSpace simulation
-# with and without the Apache Arrow backend using a closed-loop RLC PID control system.
-#
-# Run with: crystal run --release -Darrow examples/arrow_vs_cpu_benchmark.cr
+# This benchmark simulates a continuous closed-loop RLC PID control system
+# with 4 states (A in R^4x4) using Runge-Kutta 4th-order (RK4) integration
+# for 1,000,000 simulation steps (dt = 0.001s).
+# It compares the CPU backend with the Apache Arrow SIMD backend (-Darrow).
 
 require "../src/cryspace"
 require "benchmark"
 
-# 1. Plant (RLC)
+# 1. Setup RLC Plant + PID Controller (total 4 states)
 R = 1.0; L = 0.5; C = 0.1
-a = [[0.0, 1/C], [-1/L, -R/L]].to_tensor
-b = [[0.0], [1/L]].to_tensor
-c = [[1.0, 0.0]].to_tensor
-d = [[0.0]].to_tensor
-rlc_plant = CrySpace::StateSpace.new(a, b, c, d)
+a_plant = [[0.0, 1/C], [-1/L, -R/L]].to_tensor
+b_plant = [[0.0], [1/L]].to_tensor
+c_plant = [[1.0, 0.0]].to_tensor
+d_plant = [[0.0]].to_tensor
+rlc_plant = CrySpace::StateSpace.new(a_plant, b_plant, c_plant, d_plant)
 
-# 2. PID Controller
 kp, ki, kd = 2.2, 14.6, 1.0
 tf = 0.01
 pid_num = [(kp*tf + kd), (kp + ki*tf), ki].to_tensor
 pid_den = [tf, 1.0, 0.0].to_tensor
 pid_controller = CrySpace::TransferFunction.new(pid_num, pid_den).to_statespace
 
-# 3. Closed-Loop System (4 States)
+# Closed-loop connection (4 states total)
 sys_cl = (rlc_plant * pid_controller).feedback([[1.0]].to_tensor)
 
-# Time vector: 0 to 1000 seconds with dt = 0.001 (1,000,001 points)
-N = 1_000_001
-t_cpu = Float64Tensor.linear_space(0.0, 1000.0, N)
-u_cpu = Float64Tensor.ones([1, N])
+puts "System closed-loop states: #{sys_cl.n_states}"
+puts "Generating 1,000,000 simulation steps time & input vectors..."
+
+# Time vector (1M steps, dt = 0.001)
+n_steps = 1_000_000
+t_cpu = Float64Tensor.linear_space(0.0, 1000.0, n_steps)
+u_cpu = Float64Tensor.ones([1, n_steps])
+
+# Run CPU benchmark
+GC.collect
+m_start_cpu = GC.stats.total_bytes
+time_cpu = Time.measure do
+  sys_cl.simulate(t_cpu, u: u_cpu, method: :rk4)
+end
+m_end_cpu = GC.stats.total_bytes
+allocated_cpu = (m_end_cpu - m_start_cpu) / 1024.0 / 1024.0
+
+puts "\n=== CPU Backend Results ==="
+puts "Execution Time: #{time_cpu.total_seconds.round(3)} s"
+puts "Allocated Memory (approx): #{allocated_cpu.round(2)} MB"
 
 {% if flag?(:arrow) %}
-  t_arr = t_cpu.arrow
-  u_arr = u_cpu.arrow
+  puts "\nPromoting vectors to Arrow backend..."
+  t_arrow = t_cpu.arrow
+  u_arrow = u_cpu.arrow
 
-  puts "Running closed-loop RLC PID simulation benchmark (1,000,000 steps, 4 states)..."
-  Benchmark.ips do |x|
-    x.report("CPU Simulation Loop") do
-      sys_cl.simulate(t_cpu, u: u_cpu.dup)
-    end
-
-    x.report("Arrow SIMD Simulation Loop") do
-      sys_cl.simulate(t_arr, u: u_arr.dup)
-    end
+  # Run Arrow SIMD benchmark
+  GC.collect
+  m_start_arrow = GC.stats.total_bytes
+  time_arrow = Time.measure do
+    sys_cl.simulate(t_arrow, u: u_arrow, method: :rk4)
   end
+  m_end_arrow = GC.stats.total_bytes
+  allocated_arrow = (m_end_arrow - m_start_arrow) / 1024.0 / 1024.0
+
+  puts "\n=== Apache Arrow SIMD Backend Results ==="
+  puts "Execution Time: #{time_arrow.total_seconds.round(3)} s"
+  puts "Allocated Memory (approx): #{allocated_arrow.round(2)} MB"
+  
+  speedup = time_cpu.total_seconds / time_arrow.total_seconds
+  puts "\nSpeedup: #{speedup.round(2)}x faster"
 {% else %}
-  puts "Arrow support not enabled. Compile with: crystal run -Darrow examples/arrow_vs_cpu_benchmark.cr"
+  puts "\nArrow support not enabled. Compile with -Darrow to see Arrow SIMD results."
 {% end %}
