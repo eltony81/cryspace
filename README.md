@@ -201,18 +201,30 @@ CrySpace relies on the following dependencies:
 
 Depending on your hardware and workload sizes, choose your compile flags:
 
-- **CPU SIMD only (Medium/Real-time loops)**:
-  ```bash
-  crystal build -Darrow --release src/your_app.cr
-  ```
-- **GPU Acceleration only (Large systems/Finite elements)**:
-  ```bash
-  crystal build -Dopencl --release src/your_app.cr
-  ```
+- **Standard CPU Mode (Default / No Flags)**:
+  - **Recommended for**: Standard control systems (1-50 states), real-time applications, and low-latency loops.
+  - **Features**: Uses highly optimized **OpenBLAS/LAPACK** and internal zero-allocation simulation loops.
+  - **Command**:
+    ```bash
+    crystal build --release src/your_app.cr
+    ```
+- **CPU SIMD Acceleration (Apache Arrow)**:
+  - **Recommended for**: Medium to large systems and batch trajectory processing.
+  - **Command**:
+    ```bash
+    crystal build -Darrow --release src/your_app.cr
+    ```
+- **GPU Acceleration (OpenCL)**:
+  - **Recommended for**: Massive systems (>1000 states) or heavy parallel tensor math.
+  - **Command**:
+    ```bash
+    crystal build -Dopencl --release src/your_app.cr
+    ```
 - **Hybrid Auto-Dispatch Mode (CPU + SIMD + GPU)**:
-  ```bash
-  crystal build -Darrow -Dopencl --release src/your_app.cr
-  ```
+  - **Command**:
+    ```bash
+    crystal build -Darrow -Dopencl --release src/your_app.cr
+    ```
 
 #### How to Use Arrow in Your Code:
 
