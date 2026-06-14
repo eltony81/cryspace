@@ -1,9 +1,9 @@
 # CrySpace
 
-![Version](https://img.shields.io/badge/version-1.25.12-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
+![Version](https://img.shields.io/badge/version-1.26.0-blue) ![Crystal](https://img.shields.io/badge/Crystal-1.x-black?logo=crystal)
 
 
-**CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/crystal-data/num.cr) for high-performance linear algebra.
+**CrySpace** is a powerful control systems library for the Crystal programming language, inspired by the Python Control Systems Library (`python-control`). It provides tools for the analysis and design of feedback control systems, leveraging [num.cr](https://github.com/eltony81/num.cr) v1.30.0 for high-performance linear algebra.
 
 ---
 
@@ -30,6 +30,10 @@ The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling 
 
 - **State-Space Systems**: Create and manipulate LTI (Linear Time-Invariant) systems in state-space form ($\dot{x} = Ax + Bu, y = Cx + Du$).
 - **Transfer Functions**: Represent systems as ratios of polynomials.
+- **High-Performance Linear Algebra**:
+  - Leverages **num.cr v1.30.0** with optimized LAPACK/BLAS bindings.
+  - Robust **DARE (Discrete-time Algebraic Riccati Equation)** solver using Schur-decomposition (pencil method).
+  - Fast **Lyapunov** and **Sylvester** equation solvers ($O(n^3)$).
 - **Vectorized Math & Serialization via Apache Arrow**:
   - Run high-performance simulation trajectory math directly on the **ARROW** backend using vectorized C++ compute kernels. Passing an Arrow-backed time/input vector automatically offloads the simulation iterations (`simulate`) to the Arrow backend using zero-copy matrix promotion.
   - In-place arithmetic operations (`add!`, `subtract!`, `multiply!`, `divide!`) and unary negation (`-`) on the Arrow backend leverage SIMD-vectorized C++ compute functions with zero GC memory allocations.
@@ -39,12 +43,12 @@ The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling 
   - Series connection (`*`)
   - Feedback connection (`feedback`)
 - **Stability Analysis**: Calculate system poles.
-- **Discretization**: Convert continuous-time systems to discrete-time using Zero-Order Hold (ZOH).
+- **Discretization**: Convert continuous-time systems to discrete-time using optimized **Zero-Order Hold (ZOH)** via augmented matrix exponential.
 - **Time Response**:
   - Step response simulation.
   - General ODE solvers (**Euler** and **Runge-Kutta 4**).
 - **Advanced Control Algorithms**:
-  - Linear Quadratic Regulator (`lqr`) design.
+  - Linear Quadratic Regulator (`lqr` and `dlqr`) design.
   - Lyapunov solvers (`lyap` and `dlyap`) for continuous and discrete-time stability analysis.
   - Bode stability margins (`stability_margins`) including Gain Margin and Phase Margin.
   - State-space realizations: convert systems to Observability Canonical Form (`to_observability_form`) and Modal Form (`to_modal_form`).
@@ -103,7 +107,7 @@ The storyboard covers **13 chapters** and **30+ CrySpace functions**: modelling 
 CrySpace relies on the following dependencies:
 
 ### Shard Dependencies
-- **num.cr** (`~> 1.24.0`): High-performance scientific computing and linear algebra library for Crystal.
+- **num.cr** (`~> 1.26.0`): High-performance scientific computing and linear algebra library for Crystal.
 
 ### System Dependencies
 - **LAPACK** (`liblapack-dev` / `lapack` `>= 3.12.0`): Linear Algebra Package for high-performance numerical routines.
