@@ -112,6 +112,7 @@ CrySpace relies on the following dependencies:
 ### System Dependencies
 - **LAPACK** (`liblapack-dev` / `lapack` `>= 3.12.0`): Linear Algebra Package for high-performance numerical routines.
 - **BLAS/CBLAS** (`libcblas-dev` / `cblas` / `openblas` `>= 3.12.0` / `>= 0.3.26`): Basic Linear Algebra Subprograms interface.
+- **Apache Arrow GLib** (`libarrow-glib-dev` / `apache-arrow-glib`): Required for vectorized SIMD features and Arrow backend support (in both `cryspace` and `num.cr`).
 
 ### Language / Compiler
 - **Crystal** (`>= 1.20.2`): The compiler and language runtime.
@@ -129,7 +130,11 @@ CrySpace relies on the following dependencies:
 2. Install system dependencies (LAPACK and BLAS/CBLAS):
    ```bash
    # On Ubuntu/Debian
-   sudo apt-get install liblapack-dev libcblas-dev
+   sudo apt-get install liblapack-dev libcblas-dev libarrow-glib-dev
+   
+   # On Arch Linux / Manjaro
+   sudo pacman -S lapack openblas arrow
+   pamac build apache-arrow-glib
    ```
 
 ### Vectorized SIMD Mode (Apache Arrow)
@@ -145,13 +150,14 @@ CrySpace relies on the following dependencies:
 #### ⚙️ How to Activate It:
 
 1. **Install System Dependencies**:
-   You must have the Apache Arrow development packages installed on your system:
+   You must have the Apache Arrow and Arrow-GLib development packages installed on your system:
    ```bash
    # On Ubuntu/Debian
-   sudo apt-get install libarrow-glib-dev
+   sudo apt-get install libarrow-dev libarrow-glib-dev
 
-   # On Arch/Manjaro
+   # On Arch Linux / Manjaro
    sudo pacman -S arrow
+   pamac build apache-arrow-glib
    ```
 
 2. **Compile with the `-Darrow` compiler flag**:
