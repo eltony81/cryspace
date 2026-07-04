@@ -1,5 +1,5 @@
 name: cryspace
-version: 1.27.0
+version: 1.28.0
 description: A control systems analysis and design library for Crystal, inspired by python-control and leveraging num.cr.
 
 authors:
