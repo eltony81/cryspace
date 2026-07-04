@@ -85,7 +85,14 @@ module CrySpace
       y_temp = Float64Tensor.new([n_outputs_count, 1])
       term_b = Float64Tensor.new([n_states_count, 1])
       term_d = Float64Tensor.new([n_outputs_count, 1])
-      
+      # RK4 work buffers
+      k1 = Float64Tensor.new([n_states_count, 1])
+      k2 = Float64Tensor.new([n_states_count, 1])
+      k3 = Float64Tensor.new([n_states_count, 1])
+      k4 = Float64Tensor.new([n_states_count, 1])
+      bu = Float64Tensor.new([n_states_count, 1])
+      x_temp = Float64Tensor.new([n_states_count, 1])
+
       n_steps.times do |i|
         if u_val.shape[1] > 1
           n_inputs_count.times do |j|
@@ -112,12 +119,42 @@ module CrySpace
         if i < n_steps - 1
           h = t_cpu.to_unsafe[i + 1] - t_cpu.to_unsafe[i]
           if method == :rk4
-            # For RK4 we still have some intermediate vectors, but let's at least avoid the biggest ones
-            k1 = a_cpu.matmul(x_current) + b_cpu.matmul(u_current)
-            k2 = a_cpu.matmul(x_current + k1 * (h / 2.0)) + b_cpu.matmul(u_current)
-            k3 = a_cpu.matmul(x_current + k2 * (h / 2.0)) + b_cpu.matmul(u_current)
-            k4 = a_cpu.matmul(x_current + k3 * h) + b_cpu.matmul(u_current)
-            x_current = x_current + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (h / 6.0)
+            # Fully in-place RK4 step: no heap allocations inside the loop
+            x_ptr = x_current.to_unsafe
+            xt_ptr = x_temp.to_unsafe
+            k1_ptr = k1.to_unsafe
+            k2_ptr = k2.to_unsafe
+            k3_ptr = k3.to_unsafe
+            k4_ptr = k4.to_unsafe
+            bu_ptr = bu.to_unsafe
+            half_h = h / 2.0
+
+            b_cpu.matmul(u_current, output: bu)
+
+            # k1 = A*x + B*u
+            a_cpu.matmul(x_current, output: k1)
+            n_states_count.times { |j| k1_ptr[j] += bu_ptr[j] }
+
+            # k2 = A*(x + k1*h/2) + B*u
+            n_states_count.times { |j| xt_ptr[j] = x_ptr[j] + k1_ptr[j] * half_h }
+            a_cpu.matmul(x_temp, output: k2)
+            n_states_count.times { |j| k2_ptr[j] += bu_ptr[j] }
+
+            # k3 = A*(x + k2*h/2) + B*u
+            n_states_count.times { |j| xt_ptr[j] = x_ptr[j] + k2_ptr[j] * half_h }
+            a_cpu.matmul(x_temp, output: k3)
+            n_states_count.times { |j| k3_ptr[j] += bu_ptr[j] }
+
+            # k4 = A*(x + k3*h) + B*u
+            n_states_count.times { |j| xt_ptr[j] = x_ptr[j] + k3_ptr[j] * h }
+            a_cpu.matmul(x_temp, output: k4)
+            n_states_count.times { |j| k4_ptr[j] += bu_ptr[j] }
+
+            # x += (k1 + 2*k2 + 2*k3 + k4) * h/6
+            h6 = h / 6.0
+            n_states_count.times do |j|
+              x_ptr[j] += (k1_ptr[j] + k2_ptr[j] * 2.0 + k3_ptr[j] * 2.0 + k4_ptr[j]) * h6
+            end
           else
             # Euler: x_next = x + h * (A*x + B*u)
             a_cpu.matmul(x_current, output: term_b)
@@ -374,7 +411,8 @@ module CrySpace
       u_matrix = Float64Tensor.new([n_steps, m])
       
       randn = ->() {
-        u1 = Random.rand
+        # 1.0 - rand is in (0, 1], keeping log() finite
+        u1 = 1.0 - Random.rand
         u2 = Random.rand
         Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math::PI * u2)
       }

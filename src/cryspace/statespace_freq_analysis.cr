@@ -40,14 +40,21 @@ module CrySpace
         end
       end
       
+      curr_dt = @dt
       w_size.times do |idx|
         w = omega.to_unsafe[idx]
+        # Continuous: s = jw. Discrete: z = e^(jw*dt)
+        s_val = if curr_dt && curr_dt > 0.0
+                  Complex.new(Math.cos(w * curr_dt), Math.sin(w * curr_dt))
+                else
+                  Complex.new(0.0, w)
+                end
         jw_i_minus_a = Tensor(Complex, CPU(Complex)).zeros([n, n])
         n.times do |i|
           n.times do |j|
             val = -a_c.to_unsafe[i * n + j]
             if i == j
-              val += Complex.new(0.0, w)
+              val += s_val
             end
             jw_i_minus_a.to_unsafe[i * n + j] = val
           end
@@ -122,7 +129,8 @@ module CrySpace
         raise ArgumentError.new("Stability margins only supported for SISO systems")
       end
 
-      omega = Float64Tensor.linear_space(0.01, 1000.0, 10000)
+      # Logarithmic grid from 0.01 to 1000 rad/s: uniform resolution per decade
+      omega = Float64Tensor.linear_space(-2.0, 3.0, 10000).map { |v| 10.0 ** v }
       h = freqresp(omega)
       
       w_gc = -1.0

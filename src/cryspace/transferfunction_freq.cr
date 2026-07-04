@@ -2,26 +2,31 @@ require "num"
 
 module CrySpace
   class TransferFunction
-    # Evaluates the transfer function at a complex frequency s.
+    # Evaluates the transfer function at a complex frequency s (Horner's method).
     def evaluate(s : Complex) : Complex
-      n_num = @num.size
-      n_den = @den.size
       num_val = Complex.new(0.0, 0.0)
-      n_num.times do |i|
-        num_val += Complex.new(@num[i].value, 0.0) * complex_power(s, n_num - 1 - i)
+      @num.size.times do |i|
+        num_val = num_val * s + @num[i].value
       end
       den_val = Complex.new(0.0, 0.0)
-      n_den.times do |i|
-        den_val += Complex.new(@den[i].value, 0.0) * complex_power(s, n_den - 1 - i)
+      @den.size.times do |i|
+        den_val = den_val * s + @den[i].value
       end
       num_val / den_val
     end
 
     def freqresp(omega : Float64Tensor) : Tensor(Complex, CPU(Complex))
       n_points = omega.size
+      curr_dt = @dt
       res = Tensor(Complex, CPU(Complex)).zeros([n_points])
       n_points.times do |i|
-        s = Complex.new(0.0, omega.to_unsafe[i])
+        w = omega.to_unsafe[i]
+        # Continuous: s = jw. Discrete: z = e^(jw*dt)
+        s = if curr_dt && curr_dt > 0.0
+              Complex.new(Math.cos(w * curr_dt), Math.sin(w * curr_dt))
+            else
+              Complex.new(0.0, w)
+            end
         res.to_unsafe[i] = evaluate(s)
       end
       res

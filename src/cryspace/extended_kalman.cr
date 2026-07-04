@@ -20,12 +20,12 @@ module CrySpace
     end
     
     def predict(u : Float64Tensor? = nil)
+      # Jacobian F evaluated at the prior estimate x_{k-1|k-1}
+      f_jac = @jf.call(@x, u)
+
       # Predict state: x = f(x, u)
       @x = @f.call(@x, u)
-      
-      # Jacobian F
-      f_jac = @jf.call(@x, u)
-      
+
       # P = F * P * F^T + Q
       @p = f_jac.matmul(@p).matmul(f_jac.transpose) + @q
     end

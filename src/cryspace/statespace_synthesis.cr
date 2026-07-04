@@ -63,12 +63,9 @@ module CrySpace
         r_inv = r.inv
         a_hat = @a - @b.matmul(r_inv).matmul(n_cross.transpose)
         q_hat = q - n_cross.matmul(r_inv).matmul(n_cross.transpose)
-        
-        orig_a = @a
-        @a = a_hat
-        p = care(q_hat, r)
-        @a = orig_a
-        
+
+        p = StateSpace.new(a_hat, @b, @c, @d, @dt).care(q_hat, r)
+
         k = r_inv.matmul(@b.transpose.matmul(p) + n_cross.transpose)
         a_cl = @a - @b.matmul(k)
         {k, p, a_cl.eigvals_c.to_a}

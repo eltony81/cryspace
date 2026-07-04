@@ -202,13 +202,25 @@ module CrySpace
     # Solves discrete-time Lyapunov equation: A*P*A^T - P + Q = 0
     # Returns P.
     def dlyap(q : Float64Tensor)
-      # Check if num.cr has discrete_lyapunov, otherwise use kron fallback
       n = n_states
-      eye_nn = Float64Tensor.identity(n * n)
-      m_lhs = @a.kron(@a) - eye_nn
-      q_vec = q.reshape([n * n, 1])
-      p_vec = m_lhs.solve(-q_vec)
-      p_vec.reshape([n, n])
+      # Cayley (bilinear) transform to a continuous Lyapunov equation, O(n^3):
+      # Ac = (A + I)^-1 * (A - I), Qc = 2 * (A + I)^-1 * Q * (A + I)^-T
+      # then Ac*P + P*Ac^T + Qc = 0 has the same solution P.
+      begin
+        eye = Float64Tensor.identity(n)
+        a_plus_inv = (@a + eye).inv
+        a_c = a_plus_inv.matmul(@a - eye)
+        q_c = a_plus_inv.matmul(q).matmul(a_plus_inv.transpose) * 2.0
+        Tensor.lyapunov(a_c, -q_c)
+      rescue
+        # Fallback when A has an eigenvalue at -1 (Cayley transform is singular):
+        # Kronecker vectorization, O(n^6) - only viable for small systems.
+        eye_nn = Float64Tensor.identity(n * n)
+        m_lhs = @a.kron(@a) - eye_nn
+        q_vec = q.reshape([n * n, 1])
+        p_vec = m_lhs.solve(-q_vec)
+        p_vec.reshape([n, n])
+      end
     end
 
     def root_locus(gains : Float64Tensor)

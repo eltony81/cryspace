@@ -3,71 +3,73 @@ require "num"
 module CrySpace
   class StateSpace
     def feedback(other : StateSpace, sign = -1)
+      s = sign.to_f64
       if n_states == 0
         n2 = other.n_states
         eye_outputs = Float64Tensor.identity(other.n_inputs)
-        e = (eye_outputs + other.d.matmul(@d)).inv
-        
-        a_cl = other.a - other.b.matmul(e).matmul(@d).matmul(other.c)
+        e = (eye_outputs - other.d.matmul(@d) * s).inv
+
+        a_cl = other.a + other.b.matmul(e).matmul(@d).matmul(other.c) * s
         b_cl = other.b.matmul(e).matmul(@d)
-        c_cl = -e.matmul(@d).matmul(other.c)
+        c_cl = e.matmul(@d).matmul(other.c) * s
         d_cl = e.matmul(@d)
         return StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
       end
-      
+
       if other.n_states == 0
         n1 = n_states
         eye_outputs = Float64Tensor.identity(other.n_inputs)
-        e = (eye_outputs + other.d.matmul(@d)).inv
-        
-        a_cl = @a - @b.matmul(e).matmul(other.d).matmul(@c)
+        e = (eye_outputs - other.d.matmul(@d) * s).inv
+
+        a_cl = @a + @b.matmul(e).matmul(other.d).matmul(@c) * s
         b_cl = @b.matmul(e)
-        c_cl = @c - @d.matmul(e).matmul(other.d).matmul(@c)
+        c_cl = @c + @d.matmul(e).matmul(other.d).matmul(@c) * s
         d_cl = @d.matmul(e)
         return StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
       end
 
-      # Closed loop system with feedback
+      # Closed loop system with feedback (u1 = r + sign * y2)
       n1 = n_states
       n2 = other.n_states
-      
-      # E = inv(I + D2 * D1)
+
+      # E = inv(I - sign * D2 * D1)
       eye_outputs = Float64Tensor.identity(other.n_inputs)
-      e = (eye_outputs + other.d.matmul(@d)).inv
-      
+      e = (eye_outputs - other.d.matmul(@d) * s).inv
+
       a_cl = Float64Tensor.zeros([n1 + n2, n1 + n2])
-      a_cl[0...n1, 0...n1] = @a - @b.matmul(e).matmul(other.d).matmul(@c)
-      a_cl[0...n1, n1...] = -@b.matmul(e).matmul(other.c)
-      a_cl[n1..., 0...n1] = other.b.matmul(@c - @d.matmul(e).matmul(other.d).matmul(@c))
-      a_cl[n1..., n1...] = other.a - other.b.matmul(@d).matmul(e).matmul(other.c)
-      
+      a_cl[0...n1, 0...n1] = @a + @b.matmul(e).matmul(other.d).matmul(@c) * s
+      a_cl[0...n1, n1...] = @b.matmul(e).matmul(other.c) * s
+      a_cl[n1..., 0...n1] = other.b.matmul(@c + @d.matmul(e).matmul(other.d).matmul(@c) * s)
+      a_cl[n1..., n1...] = other.a + other.b.matmul(@d).matmul(e).matmul(other.c) * s
+
       b_cl = Float64Tensor.zeros([n1 + n2, n_inputs])
       b_cl[0...n1, 0...] = @b.matmul(e)
       b_cl[n1..., 0...] = other.b.matmul(@d).matmul(e)
-      
+
       c_cl = Float64Tensor.zeros([n_outputs, n1 + n2])
-      c_cl[0..., 0...n1] = @c - @d.matmul(e).matmul(other.d).matmul(@c)
-      c_cl[0..., n1...] = -@d.matmul(e).matmul(other.c)
-      
+      c_cl[0..., 0...n1] = @c + @d.matmul(e).matmul(other.d).matmul(@c) * s
+      c_cl[0..., n1...] = @d.matmul(e).matmul(other.c) * s
+
       d_cl = @d.matmul(e)
-      
+
       StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
     end
 
     def feedback(k : Float64Tensor, sign = -1)
-      # feedback with static gain K
+      # feedback with static gain K (u = r + sign * K * y)
+      s = sign.to_f64
       eye_k = Float64Tensor.identity(k.shape[0])
-      e = (eye_k + k.matmul(@d)).inv
-      
-      a_cl = @a - @b.matmul(e).matmul(k).matmul(@c)
+      e = (eye_k - k.matmul(@d) * s).inv
+
+      a_cl = @a + @b.matmul(e).matmul(k).matmul(@c) * s
       b_cl = @b.matmul(e)
-      
+
       eye_d = Float64Tensor.identity(n_outputs)
-      inv_idk = (eye_d + @d.matmul(k)).inv
-      
+      inv_idk = (eye_d - @d.matmul(k) * s).inv
+
       c_cl = inv_idk.matmul(@c)
       d_cl = inv_idk.matmul(@d)
-      
+
       StateSpace.new(a_cl, b_cl, c_cl, d_cl, @dt)
     end
 
