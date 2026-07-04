@@ -8,3 +8,6 @@
 # Dependencies will be locked in applications that use them
 /shard.lock
 examples/*.csv
+
+# Local development overrides (point shards at sibling checkouts)
+/shard.override.yml
